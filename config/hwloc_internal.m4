@@ -264,6 +264,17 @@ EOF
 
     if test "x$hwloc_cairo_happy" = "xyes"; then
         AC_DEFINE([HWLOC_HAVE_CAIRO], [1], [Define to 1 if you have the `cairo' library.])
+        AC_MSG_CHECKING(if CAIRO_HAS_XLIB_SURFACE is set)
+        tmp_save_CFLAGS="$CFLAGS"
+        CFLAGS="$CFLAGS $HWLOC_CAIRO_CFLAGS"
+        AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <cairo.h>]],
+                                           [[#ifndef CAIRO_HAS_XLIB_SURFACE
+                                             #error no CAIRO_HAS_XLIB_SURFACE
+                                             #endif]])],
+                          [AC_MSG_RESULT(yes)
+                           hwloc_cairo_have_xlib_surface=yes],
+                          [AC_MSG_RESULT(no)])
+        CFLAGS="$tmp_save_CFLAGS"
     else
         AS_IF([test "$enable_cairo" = "yes"],
               [AC_MSG_WARN([--enable-cairo requested, but Cairo/X11 support was not found])
@@ -420,6 +431,7 @@ int foo(void) {
         hwloc_config_prefix[utils/netloc/infiniband/netloc_ib_gather_raw]
         hwloc_config_prefix[contrib/systemd/Makefile]
         hwloc_config_prefix[contrib/misc/Makefile]
+        hwloc_config_prefix[contrib/liblstopo/example/Makefile]
         hwloc_config_prefix[tests/netloc/Makefile]
         hwloc_config_prefix[tests/netloc/tests.sh]
     )

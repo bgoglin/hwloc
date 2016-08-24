@@ -1225,6 +1225,7 @@ AC_DEFUN([HWLOC_DO_AM_CONDITIONALS],[
 		       [test "x$hwloc_have_cudart" = "xyes"])
         AM_CONDITIONAL([HWLOC_HAVE_LIBXML2], [test "$hwloc_libxml2_happy" = "yes"])
         AM_CONDITIONAL([HWLOC_HAVE_CAIRO], [test "$hwloc_cairo_happy" = "yes"])
+        AM_CONDITIONAL([HWLOC_HAVE_CAIRO_XLIB_SURFACE], [test "$hwloc_cairo_have_xlib_surface" = "yes"])
         AM_CONDITIONAL([HWLOC_HAVE_PCIACCESS], [test "$hwloc_pciaccess_happy" = "yes"])
         AM_CONDITIONAL([HWLOC_HAVE_OPENCL], [test "$hwloc_opencl_happy" = "yes"])
         AM_CONDITIONAL([HWLOC_HAVE_NVML], [test "$hwloc_nvml_happy" = "yes"])
