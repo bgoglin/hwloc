@@ -81,6 +81,9 @@ struct lstopo_output {
   enum lstopo_drawing_e drawing;
   unsigned min_pu_textwidth;
   unsigned width, height; /* total output size */
+
+  /* callback for custom drawing */
+  int (*drawing_callback)(struct lstopo_output *loutput, hwloc_obj_t level, unsigned depth, unsigned x, unsigned width, unsigned y, unsigned height);
 };
 
 struct lstopo_color {

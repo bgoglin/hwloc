@@ -1,5 +1,5 @@
 /*
- * Copyright © 2009-2016 Inria.  All rights reserved.
+ * Copyright © 2009-2017 Inria.  All rights reserved.
  * Copyright © 2009-2012, 2015 Université Bordeaux
  * See COPYING in top-level directory.
  */
@@ -54,6 +54,8 @@ lstopo_init(struct lstopo_output *loutput)
     loutput->show_attrs[i] = 1;
     loutput->show_text[i] = 1;
   }
+
+  loutput->drawing_callback = NULL;
 }
 
 FILE *open_output(const char *filename, int overwrite)

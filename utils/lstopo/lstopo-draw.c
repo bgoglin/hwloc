@@ -1077,8 +1077,6 @@ cache_draw(struct lstopo_output *loutput, hwloc_obj_t level, unsigned depth, uns
 		   0, lud->height + gridsize);
 
   } else { /* LSTOPO_DRAWING_DRAW */
-    struct draw_methods *methods = loutput->methods;
-    struct lstopo_style style;
     unsigned totwidth;
     unsigned myoff = 0;
     unsigned myheight;
@@ -1099,10 +1097,16 @@ cache_draw(struct lstopo_output *loutput, hwloc_obj_t level, unsigned depth, uns
       lud->above_children.yrel = 0;
     }
 
-    lstopo_set_object_color(loutput, level, &style);
-    methods->box(loutput, style.bg, depth, x, totwidth, y + myoff, myheight);
+    if (!loutput->drawing_callback
+	|| loutput->drawing_callback(loutput, level, depth,
+				     x, totwidth, y + myoff, myheight) < 0) {
+      struct draw_methods *methods = loutput->methods;
+      struct lstopo_style style;
+      lstopo_set_object_color(loutput, level, &style);
+      methods->box(loutput, style.bg, depth, x, totwidth, y + myoff, myheight);
 
-    draw_text(loutput, level, style.t, depth-1, x + gridsize, y + gridsize + myoff);
+      draw_text(loutput, level, style.t, depth-1, x + gridsize, y + gridsize + myoff);
+    }
 
     /* Draw sublevels for real */
     draw_children(loutput, level, depth-1, x, y);
@@ -1129,17 +1133,21 @@ normal_draw(struct lstopo_output *loutput, hwloc_obj_t level, unsigned depth, un
 		   gridsize, lud->height);
 
   } else { /* LSTOPO_DRAWING_DRAW */
-    struct draw_methods *methods = loutput->methods;
-    struct lstopo_style style;
     unsigned totwidth, totheight;
 
     /* restore our size that was computed during prepare */
     totwidth = lud->width;
     totheight = lud->height;
 
-    lstopo_set_object_color(loutput, level, &style);
-    methods->box(loutput, style.bg, depth, x, totwidth, y, totheight);
-    draw_text(loutput, level, style.t, depth-1, x + gridsize, y + gridsize);
+    if (!loutput->drawing_callback
+	|| loutput->drawing_callback(loutput, level, depth,
+				     x, totwidth, y, totheight) < 0) {
+      struct draw_methods *methods = loutput->methods;
+      struct lstopo_style style;
+      lstopo_set_object_color(loutput, level, &style);
+      methods->box(loutput, style.bg, depth, x, totwidth, y, totheight);
+      draw_text(loutput, level, style.t, depth-1, x + gridsize, y + gridsize);
+    }
 
     /* Draw sublevels for real */
     draw_children(loutput, level, depth-1, x, y);
