@@ -108,6 +108,9 @@ struct lstopo_color {
   struct lstopo_color *next;
 };
 
+struct lstopo_color * declare_color(struct lstopo_output *loutput, struct lstopo_color *color);
+struct lstopo_color * find_or_declare_rgb_color(struct lstopo_output *loutput, int r, int g, int b);
+
 struct lstopo_style {
   struct lstopo_color
 	*bg,	/* main box background color */
@@ -204,6 +207,24 @@ extern void output_draw(struct lstopo_output *output);
 extern void lstopo_prepare_custom_styles(struct lstopo_output *loutput);
 extern void declare_colors(struct lstopo_output *output);
 extern void destroy_colors(void);
+
+extern struct lstopo_color BLACK_COLOR;
+extern struct lstopo_color WHITE_COLOR;
+extern struct lstopo_color PACKAGE_COLOR;
+extern struct lstopo_color MEMORY_COLOR;
+extern struct lstopo_color MEMORIES_COLOR;
+extern struct lstopo_color CORE_COLOR;
+extern struct lstopo_color THREAD_COLOR;
+extern struct lstopo_color RUNNING_COLOR;
+extern struct lstopo_color FORBIDDEN_COLOR;
+extern struct lstopo_color CACHE_COLOR;
+extern struct lstopo_color MACHINE_COLOR;
+extern struct lstopo_color SYSTEM_COLOR;
+extern struct lstopo_color GROUP_IN_PACKAGE_COLOR;
+extern struct lstopo_color MISC_COLOR;
+extern struct lstopo_color PCI_DEVICE_COLOR;
+extern struct lstopo_color OS_DEVICE_COLOR;
+extern struct lstopo_color BRIDGE_COLOR;
 
 static __hwloc_inline int lstopo_pu_disallowed(struct lstopo_output *loutput, hwloc_obj_t l)
 {

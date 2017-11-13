@@ -49,7 +49,7 @@ struct lstopo_color BRIDGE_COLOR = { 0xff, 0xff, 0xff, 0 };
 
 static struct lstopo_color *colors = NULL;
 
-static struct lstopo_color *
+struct lstopo_color *
 declare_color(struct lstopo_output *loutput, struct lstopo_color *color)
 {
   memset(&color->private, 0, sizeof(color->private));
@@ -106,7 +106,7 @@ destroy_colors(void)
   }
 }
 
-static struct lstopo_color *
+struct lstopo_color *
 find_or_declare_rgb_color(struct lstopo_output *loutput, int r, int g, int b)
 {
   struct lstopo_color *color, *tmp;
