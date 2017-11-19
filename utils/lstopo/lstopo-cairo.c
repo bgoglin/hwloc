@@ -231,35 +231,32 @@ move_x11(struct lstopo_x11_output *disp)
   }
 }
 
+static int x11_draw(struct lstopo_output *loutput);
+static int x11_iloop(struct lstopo_output *loutput, int block);
+static void x11_end(struct lstopo_output *loutput);
+
 static struct draw_methods x11_draw_methods = {
   NULL,
+  x11_draw,
+  x11_iloop,
+  x11_end,
   topo_cairo_box,
   topo_cairo_line,
   topo_cairo_text,
   topo_cairo_textsize,
 };
 
-int
-output_x11(struct lstopo_output *loutput, const char *dummy __hwloc_attribute_unused)
+static int
+x11_draw(struct lstopo_output *loutput)
 {
-  struct lstopo_x11_output _disp, *disp = &_disp;
-  struct lstopo_cairo_output *coutput;
+  struct lstopo_x11_output *disp = loutput->backend_data;
+  struct lstopo_cairo_output *coutput = &disp->coutput;
   Display *dpy;
   Window root, top;
   int scr;
   Screen *screen;
   int screen_width, screen_height;
   unsigned int dpi_x, dpi_y, dpi;
-  int finish = 0;
-  int state = 0;
-  int x = 0, y = 0; /* shut warning down */
-  int lastx, lasty;
-
-  coutput = &disp->coutput;
-  memset(coutput, 0, sizeof(*coutput));
-  coutput->loutput = loutput;
-  loutput->backend_data = coutput;
-  loutput->methods = &x11_draw_methods;
 
   /* create the toplevel window */
   if (!(dpy = XOpenDisplay(NULL))) {
@@ -331,14 +328,39 @@ output_x11(struct lstopo_output *loutput, const char *dummy __hwloc_attribute_un
   printf(" Exit .............................. q Q Esc\n");
   printf("\n\n");
 
-  /* ready */
-  declare_colors(loutput);
-  lstopo_prepare_custom_styles(loutput);
+  topo_cairo_paint(coutput);
+  return 0;
+}
+
+int
+output_x11(struct lstopo_output *loutput, const char *dummy __hwloc_attribute_unused)
+{
+  struct lstopo_x11_output *disp;
+  struct lstopo_cairo_output *coutput;
+
+  disp = malloc(sizeof(*disp));
+  assert(disp);
+
+  coutput = &disp->coutput;
+  memset(coutput, 0, sizeof(*coutput));
+  coutput->loutput = loutput;
+  loutput->backend_data = coutput;
+  loutput->methods = &x11_draw_methods;
+  return 0;
+}
+
+int
+x11_iloop(struct lstopo_output *loutput, int block)
+{
+  struct lstopo_x11_output *disp = loutput->backend_data;
+  struct lstopo_cairo_output *coutput = &disp->coutput;
+  int finish = 0;
+  int state = 0;
+  int x = 0, y = 0; /* shut warning down */
+  int lastx, lasty;
 
   lastx = disp->x;
   lasty = disp->y;
-
-  topo_cairo_paint(coutput);
 
   while (!finish) {
     XEvent e;
@@ -349,6 +371,8 @@ output_x11(struct lstopo_output *loutput, const char *dummy __hwloc_attribute_un
 	lastx = disp->x;
 	lasty = disp->y;
       }
+      if (!block)
+	return 0;
     }
     XNextEvent(disp->dpy, &e);
     switch (e.type) {
@@ -476,13 +500,19 @@ output_x11(struct lstopo_output *loutput, const char *dummy __hwloc_attribute_un
       }
     }
   }
+
+  return -1;
+}
+
+static void
+x11_end(struct lstopo_output *loutput)
+{
+  struct lstopo_x11_output *disp = loutput->backend_data;
   x11_destroy(disp);
   XDestroyWindow(disp->dpy, disp->top);
   XFreeCursor(disp->dpy, disp->hand);
   XCloseDisplay(disp->dpy);
-
-  destroy_colors();
-  return 0;
+  free(disp);
 }
 #endif /* CAIRO_HAS_XLIB_SURFACE */
 
@@ -490,32 +520,16 @@ output_x11(struct lstopo_output *loutput, const char *dummy __hwloc_attribute_un
 #ifdef CAIRO_HAS_PNG_FUNCTIONS
 /* PNG back-end */
 
-static struct draw_methods png_draw_methods = {
-  NULL,
-  topo_cairo_box,
-  topo_cairo_line,
-  topo_cairo_text,
-  topo_cairo_textsize,
-};
-
-int
-output_png(struct lstopo_output *loutput, const char *filename)
+static int
+png_draw(struct lstopo_output *loutput)
 {
   struct lstopo_cairo_output coutput;
-  FILE *output;
+  FILE *output = loutput->file;
   cairo_surface_t *fakecs, *cs;
-
-  output = open_output(filename, loutput->overwrite);
-  if (!output) {
-    fprintf(stderr, "Failed to open %s for writing (%s)\n", filename, strerror(errno));
-    return -1;
-  }
 
   memset(&coutput, 0, sizeof(coutput));
   coutput.loutput = loutput;
   loutput->backend_data = &coutput;
-  loutput->methods = &png_draw_methods;
-  loutput->file = output;
 
   /* create a fake surface */
   fakecs = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
@@ -531,27 +545,19 @@ output_png(struct lstopo_output *loutput, const char *filename)
   cs = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, loutput->width, loutput->height);
   coutput.surface = cs;
 
-  /* ready */
-  declare_colors(loutput);
-  lstopo_prepare_custom_styles(loutput);
-
   topo_cairo_paint(&coutput);
   cairo_surface_write_to_png_stream(coutput.surface, topo_cairo_write, output);
   cairo_surface_destroy(coutput.surface);
 
   if (output != stdout)
     fclose(output);
-
-  destroy_colors();
   return 0;
 }
-#endif /* CAIRO_HAS_PNG_FUNCTIONS */
 
-
-#ifdef CAIRO_HAS_PDF_SURFACE
-/* PDF back-end */
-
-static struct draw_methods pdf_draw_methods = {
+static struct draw_methods png_draw_methods = {
+  NULL,
+  png_draw,
+  NULL,
   NULL,
   topo_cairo_box,
   topo_cairo_line,
@@ -560,11 +566,9 @@ static struct draw_methods pdf_draw_methods = {
 };
 
 int
-output_pdf(struct lstopo_output *loutput, const char *filename)
+output_png(struct lstopo_output *loutput, const char *filename)
 {
-  struct lstopo_cairo_output coutput;
   FILE *output;
-  cairo_surface_t *fakecs, *cs;
 
   output = open_output(filename, loutput->overwrite);
   if (!output) {
@@ -572,11 +576,26 @@ output_pdf(struct lstopo_output *loutput, const char *filename)
     return -1;
   }
 
+  loutput->methods = &png_draw_methods;
+  loutput->file = output;
+  return 0;
+}
+#endif /* CAIRO_HAS_PNG_FUNCTIONS */
+
+
+#ifdef CAIRO_HAS_PDF_SURFACE
+/* PDF back-end */
+
+static int
+pdf_draw(struct lstopo_output *loutput)
+{
+  struct lstopo_cairo_output coutput;
+  FILE *output = loutput->file;
+  cairo_surface_t *fakecs, *cs;
+
   memset(&coutput, 0, sizeof(coutput));
   coutput.loutput = loutput;
   loutput->backend_data = &coutput;
-  loutput->methods = &pdf_draw_methods;
-  loutput->file = output;
 
   /* create a fake surface */
   fakecs = cairo_pdf_surface_create_for_stream(NULL, NULL, 1, 1);
@@ -592,27 +611,19 @@ output_pdf(struct lstopo_output *loutput, const char *filename)
   cs = cairo_pdf_surface_create_for_stream(topo_cairo_write, loutput->file, loutput->width, loutput->height);
   coutput.surface = cs;
 
-  /* ready */
-  declare_colors(loutput);
-  lstopo_prepare_custom_styles(loutput);
-
   topo_cairo_paint(&coutput);
   cairo_surface_flush(coutput.surface);
   cairo_surface_destroy(coutput.surface);
 
   if (output != stdout)
     fclose(output);
-
-  destroy_colors();
   return 0;
 }
-#endif /* CAIRO_HAS_PDF_SURFACE */
 
-
-#ifdef CAIRO_HAS_PS_SURFACE
-/* PS back-end */
-
-static struct draw_methods ps_draw_methods = {
+static struct draw_methods pdf_draw_methods = {
+  NULL,
+  pdf_draw,
+  NULL,
   NULL,
   topo_cairo_box,
   topo_cairo_line,
@@ -621,11 +632,9 @@ static struct draw_methods ps_draw_methods = {
 };
 
 int
-output_ps(struct lstopo_output *loutput, const char *filename)
+output_pdf(struct lstopo_output *loutput, const char *filename)
 {
-  struct lstopo_cairo_output coutput;
   FILE *output;
-  cairo_surface_t *fakecs, *cs;
 
   output = open_output(filename, loutput->overwrite);
   if (!output) {
@@ -633,11 +642,26 @@ output_ps(struct lstopo_output *loutput, const char *filename)
     return -1;
   }
 
+  loutput->methods = &pdf_draw_methods;
+  loutput->file = output;
+  return 0;
+}
+#endif /* CAIRO_HAS_PDF_SURFACE */
+
+
+#ifdef CAIRO_HAS_PS_SURFACE
+/* PS back-end */
+
+static int
+ps_draw(struct lstopo_output *loutput)
+{
+  struct lstopo_cairo_output coutput;
+  FILE *output = loutput->file;
+  cairo_surface_t *fakecs, *cs;
+
   memset(&coutput, 0, sizeof(coutput));
   coutput.loutput = loutput;
   loutput->backend_data = &coutput;
-  loutput->methods = &ps_draw_methods;
-  loutput->file = output;
 
   /* create a fake surface */
   fakecs = cairo_ps_surface_create_for_stream(NULL, NULL, 1, 1);
@@ -653,27 +677,19 @@ output_ps(struct lstopo_output *loutput, const char *filename)
   cs = cairo_ps_surface_create_for_stream(topo_cairo_write, loutput->file, loutput->width, loutput->height);
   coutput.surface = cs;
 
-  /* ready */
-  declare_colors(loutput);
-  lstopo_prepare_custom_styles(loutput);
-
   topo_cairo_paint(&coutput);
   cairo_surface_flush(coutput.surface);
   cairo_surface_destroy(coutput.surface);
 
   if (output != stdout)
     fclose(output);
-
-  destroy_colors();
   return 0;
 }
-#endif /* CAIRO_HAS_PS_SURFACE */
 
-
-#ifdef CAIRO_HAS_SVG_SURFACE
-/* SVG back-end */
-
-static struct draw_methods svg_draw_methods = {
+static struct draw_methods ps_draw_methods = {
+  NULL,
+  ps_draw,
+  NULL,
   NULL,
   topo_cairo_box,
   topo_cairo_line,
@@ -682,11 +698,9 @@ static struct draw_methods svg_draw_methods = {
 };
 
 int
-output_svg(struct lstopo_output *loutput, const char *filename)
+output_ps(struct lstopo_output *loutput, const char *filename)
 {
-  struct lstopo_cairo_output coutput;
   FILE *output;
-  cairo_surface_t *fakecs, *cs;
 
   output = open_output(filename, loutput->overwrite);
   if (!output) {
@@ -694,11 +708,26 @@ output_svg(struct lstopo_output *loutput, const char *filename)
     return -1;
   }
 
+  loutput->methods = &ps_draw_methods;
+  loutput->file = output;
+  return 0;
+}
+#endif /* CAIRO_HAS_PS_SURFACE */
+
+
+#ifdef CAIRO_HAS_SVG_SURFACE
+/* SVG back-end */
+
+static int
+svg_draw(struct lstopo_output *loutput)
+{
+  struct lstopo_cairo_output coutput;
+  FILE *output = loutput->file;
+  cairo_surface_t *fakecs, *cs;
+
   memset(&coutput, 0, sizeof(coutput));
   coutput.loutput = loutput;
   loutput->backend_data = &coutput;
-  loutput->methods = &svg_draw_methods;
-  loutput->file = output;
 
   /* create a fake surface */
   fakecs = cairo_svg_surface_create_for_stream(NULL, NULL, 1, 1);
@@ -714,18 +743,39 @@ output_svg(struct lstopo_output *loutput, const char *filename)
   cs = cairo_svg_surface_create_for_stream(topo_cairo_write, loutput->file, loutput->width, loutput->height);
   coutput.surface = cs;
 
-  /* ready */
-  declare_colors(loutput);
-  lstopo_prepare_custom_styles(loutput);
-
   topo_cairo_paint(&coutput);
   cairo_surface_flush(coutput.surface);
   cairo_surface_destroy(coutput.surface);
 
   if (output != stdout)
     fclose(output);
+  return 0;
+}
 
-  destroy_colors();
+static struct draw_methods svg_draw_methods = {
+  NULL,
+  svg_draw,
+  NULL,
+  NULL,
+  topo_cairo_box,
+  topo_cairo_line,
+  topo_cairo_text,
+  topo_cairo_textsize,
+};
+
+int
+output_svg(struct lstopo_output *loutput, const char *filename)
+{
+  FILE *output;
+
+  output = open_output(filename, loutput->overwrite);
+  if (!output) {
+    fprintf(stderr, "Failed to open %s for writing (%s)\n", filename, strerror(errno));
+    return -1;
+  }
+
+  loutput->methods = &svg_draw_methods;
+  loutput->file = output;
   return 0;
 }
 #endif /* CAIRO_HAS_SVG_SURFACE */

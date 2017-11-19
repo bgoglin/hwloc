@@ -134,6 +134,7 @@ set_color(const struct lstopo_color *fcolor, const struct lstopo_color *bcolor)
 
 static int ascii_color_index = 16;
 static struct lstopo_color *default_color = NULL;
+static int term = 0;
 
 /* When we can, allocate rgb colors */
 static int
@@ -423,81 +424,18 @@ ascii_textsize(struct lstopo_output *loutput __hwloc_attribute_unused, const cha
   *width = XSCALE_REVERSE(textlength);
 }
 
-static struct draw_methods ascii_draw_methods = {
-  ascii_declare_color,
-  ascii_box,
-  ascii_line,
-  ascii_text,
-  ascii_textsize,
-};
-
-int
-output_ascii(struct lstopo_output *loutput, const char *filename)
+static int
+ascii_draw(struct lstopo_output *loutput)
 {
-  FILE *output;
+  FILE *output = loutput->file;
   struct lstopo_ascii_output disp;
   int i, j;
   const struct lstopo_color *lfcolor; /* Last foreground color */
   const struct lstopo_color *lbcolor; /* Last background color */
-#ifdef HWLOC_HAVE_LIBTERMCAP
-  int term = 0;
-  char *tmp;
-#endif
   int width, height;
-
-  output = open_output(filename, loutput->overwrite);
-  if (!output) {
-    fprintf(stderr, "Failed to open %s for writing (%s)\n", filename, strerror(errno));
-    return -1;
-  }
-
-  if (loutput->gridsize != 10) {
-    fprintf(stderr, "--gridsize ignored in the ASCII backend.\n");
-    loutput->gridsize = 10;
-  }
-  if (loutput->fontsize && loutput->fontsize != 10) {
-    fprintf(stderr, "--fontsize ignored in the ASCII backend.\n");
-    loutput->fontsize = 10;
-  }
-
-  /* cannot write between lines of the terminal */
-  loutput->no_half_lines = 1;
-
-#ifdef HWLOC_HAVE_LIBTERMCAP
-  /* If we are outputing to a tty, use colors */
-  if (output == stdout && isatty(STDOUT_FILENO)) {
-    term = !setupterm(NULL, STDOUT_FILENO, NULL);
-
-    if (term) {
-      /* reset colors */
-      if (orig_colors)
-        tputs(orig_colors, 1, myputchar);
-
-      /* Get terminfo(5) strings */
-      initp = initialize_pair;
-      if (max_pairs <= 16 || !initp || !set_color_pair) {
-	/* Can't use max_pairs to define our own colors */
-	initp = NULL;
-	if (max_colors > 16)
-	  if (can_change)
-            initc = initialize_color;
-      }
-      /* Prevent a trivial compiler warning because the param of
-         tgetflag is (char*), not (const char*). */
-      tmp = strdup("lhs");
-      if (tgetflag(tmp)) {
-	/* Sorry, I'm lazy to convert colors and I don't know any terminal
-	 * using LHS anyway */
-	initc = initp = 0;
-      }
-      free(tmp);
-    }
-  }
-#endif /* HWLOC_HAVE_LIBTERMCAP */
 
   disp.loutput = loutput;
   loutput->backend_data = &disp;
-  loutput->methods = &ascii_draw_methods;
 
   /* recurse once for preparing sizes and positions */
   loutput->drawing = LSTOPO_DRAWING_PREPARE;
@@ -505,10 +443,6 @@ output_ascii(struct lstopo_output *loutput, const char *filename)
   width = disp.width = XSCALE(loutput->width + 1);
   height = disp.height = YSCALE(loutput->height + 1);
   loutput->drawing = LSTOPO_DRAWING_DRAW;
-
-  /* prepare colors */
-  declare_colors(loutput);
-  lstopo_prepare_custom_styles(loutput);
 
   /* terminals usually have narrow characters, so let's make them wider */
   disp.cells = malloc(height * sizeof(*disp.cells));
@@ -566,7 +500,79 @@ output_ascii(struct lstopo_output *loutput, const char *filename)
 
   if (output != stdout)
     fclose(output);
+  return 0;
+}
 
-  destroy_colors();
+static struct draw_methods ascii_draw_methods = {
+  ascii_declare_color,
+  ascii_draw,
+  NULL,
+  NULL,
+  ascii_box,
+  ascii_line,
+  ascii_text,
+  ascii_textsize,
+};
+
+int
+output_ascii(struct lstopo_output *loutput, const char *filename)
+{
+  FILE *output;
+#ifdef HWLOC_HAVE_LIBTERMCAP
+  char *tmp;
+#endif
+
+  output = open_output(filename, loutput->overwrite);
+  if (!output) {
+    fprintf(stderr, "Failed to open %s for writing (%s)\n", filename, strerror(errno));
+    return -1;
+  }
+  loutput->file = output;
+
+  if (loutput->gridsize != 10) {
+    fprintf(stderr, "--gridsize ignored in the ASCII backend.\n");
+    loutput->gridsize = 10;
+  }
+  if (loutput->fontsize && loutput->fontsize != 10) {
+    fprintf(stderr, "--fontsize ignored in the ASCII backend.\n");
+    loutput->fontsize = 10;
+  }
+
+  /* cannot write between lines of the terminal */
+  loutput->no_half_lines = 1;
+
+#ifdef HWLOC_HAVE_LIBTERMCAP
+  /* If we are outputing to a tty, use colors */
+  if (output == stdout && isatty(STDOUT_FILENO)) {
+    term = !setupterm(NULL, STDOUT_FILENO, NULL);
+
+    if (term) {
+      /* reset colors */
+      if (orig_colors)
+        tputs(orig_colors, 1, myputchar);
+
+      /* Get terminfo(5) strings */
+      initp = initialize_pair;
+      if (max_pairs <= 16 || !initp || !set_color_pair) {
+	/* Can't use max_pairs to define our own colors */
+	initp = NULL;
+	if (max_colors > 16)
+	  if (can_change)
+            initc = initialize_color;
+      }
+      /* Prevent a trivial compiler warning because the param of
+         tgetflag is (char*), not (const char*). */
+      tmp = strdup("lhs");
+      if (tgetflag(tmp)) {
+	/* Sorry, I'm lazy to convert colors and I don't know any terminal
+	 * using LHS anyway */
+	initc = initp = 0;
+      }
+      free(tmp);
+    }
+  }
+#endif /* HWLOC_HAVE_LIBTERMCAP */
+
+  loutput->methods = &ascii_draw_methods;
   return 0;
 }

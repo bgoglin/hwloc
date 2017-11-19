@@ -273,8 +273,15 @@ windows_textsize(struct lstopo_output *loutput, const char *text, unsigned textl
   *width = size.cx;
 }
 
+static int windows_draw(struct lstopo_output *loutput);
+static int windows_iloop(struct lstopo_output *loutput, int block);
+static void windows_end(struct lstopo_output *loutput);
+
 struct draw_methods windows_draw_methods = {
   windows_declare_color,
+  windows_draw,
+  windows_iloop,
+  windows_end,
   windows_box,
   windows_line,
   windows_text,
@@ -284,16 +291,20 @@ struct draw_methods windows_draw_methods = {
 int
 output_windows (struct lstopo_output *loutput, const char *dummy __hwloc_attribute_unused)
 {
-  WNDCLASS wndclass;
-  HWND toplevel, faketoplevel;
-  unsigned width, height;
-  HFONT font;
-  MSG msg;
-
   memset(&the_output, 0, sizeof(the_output));
   the_output.loutput = loutput;
   loutput->methods = &windows_draw_methods;
   loutput->backend_data = &the_output;
+  return 0;
+}
+
+static int
+windows_draw (struct lstopo_output *loutput)
+{
+  WNDCLASS wndclass;
+  HWND toplevel, faketoplevel;
+  unsigned width, height;
+  HFONT font;
 
   /* make sure WM_DESTROY on the faketoplevel won't kill the program */
   the_output.toplevel = NULL;
@@ -368,11 +379,26 @@ output_windows (struct lstopo_output *loutput, const char *dummy __hwloc_attribu
   lstopo_prepare_custom_styles(loutput);
 
   UpdateWindow(the_output.toplevel);
-  while (!finish && GetMessage(&msg, NULL, 0, 0)) {
+  return 0;
+}
+
+static int
+windows_iloop(struct lstopo_output *loutput __hwloc_attribute_unused, int block)
+{
+  MSG msg;
+  while (!finish) {
+    if (!block && !PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE))
+      return 0;
+    if (!GetMessage(&msg, NULL, 0, 0))
+      break;
     TranslateMessage(&msg);
     DispatchMessage(&msg);
   }
+  return -1;
+}
 
+static void
+windows_end(struct lstopo_output *loutput)
+{
   destroy_colors();
-  return 0;
 }

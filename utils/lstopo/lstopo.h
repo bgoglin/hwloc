@@ -75,7 +75,7 @@ struct lstopo_output {
 
   /* draw internal data */
   void *backend_data;
-  struct draw_methods *methods;
+  struct draw_methods *methods; /* if NULL, everything is done in output_foo(). otherwise methods->draw() must be set. */
   enum lstopo_drawing_e drawing;
   unsigned min_pu_textwidth;
   unsigned width, height; /* total output size */
@@ -169,7 +169,19 @@ typedef int output_method (struct lstopo_output *output, const char *filename);
 extern output_method output_console, output_synthetic, output_ascii, output_fig, output_png, output_pdf, output_ps, output_svg, output_x11, output_windows, output_xml;
 
 struct draw_methods {
+  /* declare a color to the backend. called before draw(). OPTIONAL */
   int (*declare_color) (struct lstopo_output *loutput, struct lstopo_color *lcolor);
+  /* main drawing function. MANDATORY */
+  int (*draw) (struct lstopo_output *loutput);
+  /* handles graphical events and redraws.
+   * returns 0 when done and !block, -1 when exit requested.
+   * OPTIONAL. */
+  int (*iloop) (struct lstopo_output *loutput, int block);
+  /* cleanup drawing stuff.
+   * OPTIONAL. */
+  void (*end) (struct lstopo_output *loutput);
+
+  /* actual low-level drawing callbacks. */
   /* only called when loutput->draw_methods == LSTOPO_DRAWING_DRAW */
   void (*box) (struct lstopo_output *loutput, const struct lstopo_color *lcolor, unsigned depth, unsigned x, unsigned width, unsigned y, unsigned height);
   void (*line) (struct lstopo_output *loutput, const struct lstopo_color *lcolor, unsigned depth, unsigned x1, unsigned y1, unsigned x2, unsigned y2);

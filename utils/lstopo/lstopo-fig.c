@@ -92,8 +92,28 @@ fig_text(struct lstopo_output *loutput, const struct lstopo_color *lcolor, int s
   fprintf(file, "4 0 %d %u -1 0 %d 0.0 4 %d %d %u %u %s\\001\n", color, depth, size, size * 10, len * size * 10, x, y + size * 10, text);
 }
 
+static int
+fig_draw(struct lstopo_output *loutput)
+{
+  FILE *output = loutput->file;
+
+  /* recurse once for preparing sizes and positions */
+  loutput->drawing = LSTOPO_DRAWING_PREPARE;
+  output_draw(loutput);
+  loutput->drawing = LSTOPO_DRAWING_DRAW;
+
+  output_draw(loutput);
+
+  if (output != stdout)
+    fclose(output);
+  return 0;
+}
+
 static struct draw_methods fig_draw_methods = {
   fig_declare_color,
+  fig_draw,
+  NULL,
+  NULL,
   fig_box,
   fig_line,
   fig_text,
@@ -109,14 +129,6 @@ output_fig (struct lstopo_output *loutput, const char *filename)
     return -1;
   }
 
-  loutput->file = output;
-  loutput->methods = &fig_draw_methods;
-
-  /* recurse once for preparing sizes and positions */
-  loutput->drawing = LSTOPO_DRAWING_PREPARE;
-  output_draw(loutput);
-  loutput->drawing = LSTOPO_DRAWING_DRAW;
-
   fprintf(output, "#FIG 3.2  Produced by hwloc's lstopo\n");
   fprintf(output, "Landscape\n");
   fprintf(output, "Center\n");
@@ -127,15 +139,7 @@ output_fig (struct lstopo_output *loutput, const char *filename)
   fprintf(output, "-2\n");	/* no transparent color */
   fprintf(output, "1200 2\n");	/* 1200 ppi resolution, upper left origin */
 
-  /* ready */
-  declare_colors(loutput);
-  lstopo_prepare_custom_styles(loutput);
-
-  output_draw(loutput);
-
-  if (output != stdout)
-    fclose(output);
-
-  destroy_colors();
+  loutput->file = output;
+  loutput->methods = &fig_draw_methods;
   return 0;
 }
