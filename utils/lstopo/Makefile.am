@@ -11,48 +11,57 @@ AM_CFLAGS = $(HWLOC_CFLAGS)
 AM_CPPFLAGS = $(HWLOC_CPPFLAGS) -I$(top_srcdir)/utils/hwloc
 AM_LDFLAGS = $(HWLOC_LDFLAGS)
 
-LDADD = $(HWLOC_top_builddir)/hwloc/libhwloc.la
-
 bin_PROGRAMS = \
         lstopo-no-graphics
 
 EXTRA_DIST = \
         test-lstopo.output
 
-lstopo_no_graphics_SOURCES = \
+noinst_LTLIBRARIES = liblstopo-base.la
+liblstopo_base_la_SOURCES = \
         lstopo.h \
-        lstopo.c \
         lstopo-core.c \
         lstopo-draw.c \
         lstopo-fig.c \
         lstopo-ascii.c \
         lstopo-text.c \
         lstopo-xml.c
+liblstopo_base_la_LIBADD = $(HWLOC_top_builddir)/hwloc/libhwloc.la -lm $(HWLOC_TERMCAP_LIBS)
 
-lstopo_no_graphics_CFLAGS = $(AM_CFLAGS)
-lstopo_no_graphics_LDADD = $(LDADD) -lm $(HWLOC_TERMCAP_LIBS)
+lstopo_no_graphics_SOURCES = lstopo.c
+lstopo_no_graphics_LDADD = $(HWLOC_top_builddir)/hwloc/libhwloc.la liblstopo-base.la
 
-lstopo_SOURCES = $(lstopo_no_graphics_SOURCES)
-lstopo_CPPFLAGS = $(AM_CPPFLAGS)
-lstopo_LDADD = $(lstopo_no_graphics_LDADD)
 if HWLOC_HAVE_CAIRO
+noinst_LTLIBRARIES += liblstopo-cairo.la
+liblstopo_cairo_la_SOURCES = lstopo-cairo.c
+liblstopo_cairo_la_CFLAGS = $(AM_CFLAGS) $(HWLOC_CAIRO_CFLAGS)
+liblstopo_cairo_la_CPPFLAGS = $(AM_CPPFLAGS) $(HWLOC_X11_CPPFLAGS)
+liblstopo_cairo_la_LIBADD = $(HWLOC_CAIRO_LIBS) $(HWLOC_X11_LIBS) $(HWLOC_top_builddir)/hwloc/libhwloc.la liblstopo-base.la liblstopo-base.la
+
 bin_PROGRAMS += lstopo
-lstopo_SOURCES += lstopo-cairo.c
-lstopo_CPPFLAGS += -DLSTOPO_HAVE_GRAPHICS $(HWLOC_X11_CPPFLAGS)
-lstopo_CFLAGS = $(lstopo_no_graphics_CFLAGS) $(HWLOC_CAIRO_CFLAGS)
-lstopo_LDADD += $(HWLOC_CAIRO_LIBS) $(HWLOC_X11_LIBS)
+lstopo_SOURCES = lstopo.c
+lstopo_CFLAGS = $(AM_CFLAGS) $(HWLOC_CAIRO_CFLAGS)
+lstopo_CPPFLAGS = $(AM_CPPFLAGS) -DLSTOPO_HAVE_GRAPHICS
+lstopo_LDADD = $(HWLOC_top_builddir)/hwloc/libhwloc.la liblstopo-base.la liblstopo-cairo.la
 endif
+
 if HWLOC_HAVE_WINDOWS
+noinst_LTLIBRARIES += liblstopo-windows.la
+liblstopo_windows_la_SOURCES = lstopo-windows.c
+
 bin_PROGRAMS += lstopo lstopo-win
-lstopo_SOURCES += lstopo-windows.c
-lstopo_CPPFLAGS += -DLSTOPO_HAVE_GRAPHICS
+lstopo_SOURCES = lstopo.c
+lstopo_CPPFLAGS = $(AM_CPPFLAGS) -DLSTOPO_HAVE_GRAPHICS
+lstopo_LDADD = $(HWLOC_top_builddir)/hwloc/libhwloc.la liblstopo-base.la liblstopo-windows.la
+lstopo_LDFLAGS = -mwindows
 if HWLOC_HAVE_USER32
 lstopo_LDADD += -luser32
 endif
 lstopo_win_SOURCES = $(lstopo_SOURCES)
 lstopo_win_CPPFLAGS = $(lstopo_CPPFLAGS)
-lstopo_win_CFLAGS = $(lstopo_CFLAGS) -mwindows
+lstopo_win_CFLAGS = $(AM_CFLAGS)
 lstopo_win_LDADD = $(lstopo_LDADD)
+lstopo_win_LDFLAGS = -mwindows
 endif
 
 man1_pages = lstopo-no-graphics.1
