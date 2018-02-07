@@ -49,11 +49,21 @@ struct hwloc_bitmap_s {
   unsigned ulongs_count; /* how many ulong bitmasks are valid, >= 1 */
   unsigned ulongs_allocated; /* how many ulong bitmasks are allocated, >= ulongs_count */
   unsigned long *ulongs;
-  int infinite; /* set to 1 if all bits beyond ulongs are set */
+  unsigned flags;
 #ifdef HWLOC_DEBUG
   int magic;
 #endif
 };
+
+/* Hwloc Bitmap Flags */
+#define HBF_INFINITE (1<<0) /* if all bits beyond ulongs are set */ /* MUST remain ==1 if we ever have infinite bitmaps in shmem clones */
+
+#define HBF_COPIED_FLAGS (HBF_INFINITE) /* flags that are copied/dup'ed between bitmaps */
+
+#define INFINITE_ISSET(set) ((set)->flags & HBF_INFINITE)
+#define INFINITE_SET(set) (set)->flags |= HBF_INFINITE
+#define INFINITE_CLR(set) (set)->flags &= ~HBF_INFINITE
+
 
 /* overzealous check in debug-mode, not as powerful as valgrind but still useful */
 #ifdef HWLOC_DEBUG
@@ -72,7 +82,7 @@ struct hwloc_bitmap_s {
 /* Read from a bitmap ulong without knowing whether x is valid.
  * Writers should make sure that x is valid and modify set->ulongs[x] directly.
  */
-#define HWLOC_SUBBITMAP_READULONG(set,x)	((x) < (set)->ulongs_count ? (set)->ulongs[x] : (set)->infinite ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO)
+#define HWLOC_SUBBITMAP_READULONG(set,x)	((x) < (set)->ulongs_count ? (set)->ulongs[x] : INFINITE_ISSET(set) ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO)
 
 /* predefined subset values */
 #define HWLOC_SUBBITMAP_ZERO			0UL
@@ -100,7 +110,7 @@ struct hwloc_bitmap_s * hwloc_bitmap_alloc(void)
   }
 
   set->ulongs[0] = HWLOC_SUBBITMAP_ZERO;
-  set->infinite = 0;
+  set->flags = 0;
 #ifdef HWLOC_DEBUG
   set->magic = HWLOC_BITMAP_MAGIC;
 #endif
@@ -111,7 +121,7 @@ struct hwloc_bitmap_s * hwloc_bitmap_alloc_full(void)
 {
   struct hwloc_bitmap_s * set = hwloc_bitmap_alloc();
   if (set) {
-    set->infinite = 1;
+    INFINITE_SET(set);
     set->ulongs[0] = HWLOC_SUBBITMAP_FULL;
   }
   return set;
@@ -151,7 +161,7 @@ hwloc_bitmap_enlarge_by_ulongs(struct hwloc_bitmap_s * set, unsigned needed_coun
 }
 
 /* enlarge until it contains at least needed_count ulongs,
- * and update new ulongs according to the infinite field.
+ * and update new ulongs according to the infinite flag.
  */
 static int
 hwloc_bitmap_realloc_by_ulongs(struct hwloc_bitmap_s * set, unsigned needed_count) __hwloc_attribute_warn_unused_result;
@@ -171,7 +181,7 @@ hwloc_bitmap_realloc_by_ulongs(struct hwloc_bitmap_s * set, unsigned needed_coun
 
   /* fill the newly allocated subset depending on the infinite flag */
   for(i=set->ulongs_count; i<needed_count; i++)
-    set->ulongs[i] = set->infinite ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO;
+    set->ulongs[i] = INFINITE_ISSET(set) ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO;
   set->ulongs_count = needed_count;
   return 0;
 }
@@ -219,7 +229,7 @@ struct hwloc_bitmap_s * hwloc_bitmap_tma_dup(struct hwloc_tma *tma, const struct
   new->ulongs_allocated = old->ulongs_allocated;
   new->ulongs_count = old->ulongs_count;
   memcpy(new->ulongs, old->ulongs, new->ulongs_count * sizeof(unsigned long));
-  new->infinite = old->infinite;
+  new->flags = old->flags & HBF_COPIED_FLAGS;
 #ifdef HWLOC_DEBUG
   new->magic = HWLOC_BITMAP_MAGIC;
 #endif
@@ -240,7 +250,7 @@ int hwloc_bitmap_copy(struct hwloc_bitmap_s * dst, const struct hwloc_bitmap_s *
     return -1;
 
   memcpy(dst->ulongs, src->ulongs, src->ulongs_count * sizeof(unsigned long));
-  dst->infinite = src->infinite;
+  dst->flags = src->flags & HBF_COPIED_FLAGS;
   return 0;
 }
 
@@ -271,7 +281,7 @@ int hwloc_bitmap_snprintf(char * __hwloc_restrict buf, size_t buflen, const stru
   if (buflen > 0)
     tmp[0] = '\0';
 
-  if (set->infinite) {
+  if (INFINITE_ISSET(set)) {
     res = hwloc_snprintf(tmp, size, "0xf...f");
     needcomma = 1;
     if (res < 0)
@@ -285,7 +295,7 @@ int hwloc_bitmap_snprintf(char * __hwloc_restrict buf, size_t buflen, const stru
 
   i=(int) set->ulongs_count-1;
 
-  if (set->infinite) {
+  if (INFINITE_ISSET(set)) {
     /* ignore starting FULL since we have 0xf...f already */
     while (i>=0 && set->ulongs[i] == HWLOC_SUBBITMAP_FULL)
       i--;
@@ -387,7 +397,7 @@ int hwloc_bitmap_sscanf(struct hwloc_bitmap_s *set, const char * __hwloc_restric
 
   if (hwloc_bitmap_reset_by_ulongs(set, (count + HWLOC_BITMAP_STRING_PER_LONG - 1) / HWLOC_BITMAP_STRING_PER_LONG) < 0)
     return -1;
-  set->infinite = 0;
+  INFINITE_CLR(set);
 
   while (*current != '\0') {
     unsigned long val;
@@ -412,7 +422,8 @@ int hwloc_bitmap_sscanf(struct hwloc_bitmap_s *set, const char * __hwloc_restric
     current = (const char*) next+1;
   }
 
-  set->infinite = infinite; /* set at the end, to avoid spurious realloc with filled new ulongs */
+  if (infinite)
+    INFINITE_SET(set); /* set at the end, to avoid spurious realloc with filled new ulongs */
 
   return 0;
 
@@ -553,7 +564,7 @@ int hwloc_bitmap_taskset_snprintf(char * __hwloc_restrict buf, size_t buflen, co
   if (buflen > 0)
     tmp[0] = '\0';
 
-  if (set->infinite) {
+  if (INFINITE_ISSET(set)) {
     res = hwloc_snprintf(tmp, size, "0xf...f");
     started = 1;
     if (res < 0)
@@ -567,7 +578,7 @@ int hwloc_bitmap_taskset_snprintf(char * __hwloc_restrict buf, size_t buflen, co
 
   i=set->ulongs_count-1;
 
-  if (set->infinite) {
+  if (INFINITE_ISSET(set)) {
     /* ignore starting FULL since we have 0xf...f already */
     while (i>=0 && set->ulongs[i] == HWLOC_SUBBITMAP_FULL)
       i--;
@@ -660,7 +671,7 @@ int hwloc_bitmap_taskset_sscanf(struct hwloc_bitmap_s *set, const char * __hwloc
 
   if (hwloc_bitmap_reset_by_ulongs(set, count) < 0)
     return -1;
-  set->infinite = 0;
+  INFINITE_CLR(set);
 
   while (*current != '\0') {
     int tmpchars;
@@ -685,7 +696,8 @@ int hwloc_bitmap_taskset_sscanf(struct hwloc_bitmap_s *set, const char * __hwloc
     count--;
   }
 
-  set->infinite = infinite; /* set at the end, to avoid spurious realloc with filled new ulongs */
+  if (infinite)
+    INFINITE_SET(set); /* set at the end, to avoid spurious realloc with filled new ulongs */
 
   return 0;
 
@@ -700,7 +712,7 @@ static void hwloc_bitmap__zero(struct hwloc_bitmap_s *set)
 	unsigned i;
 	for(i=0; i<set->ulongs_count; i++)
 		set->ulongs[i] = HWLOC_SUBBITMAP_ZERO;
-	set->infinite = 0;
+	INFINITE_CLR(set);
 }
 
 void hwloc_bitmap_zero(struct hwloc_bitmap_s * set)
@@ -721,7 +733,7 @@ static void hwloc_bitmap__fill(struct hwloc_bitmap_s * set)
 	unsigned i;
 	for(i=0; i<set->ulongs_count; i++)
 		set->ulongs[i] = HWLOC_SUBBITMAP_FULL;
-	set->infinite = 1;
+	INFINITE_SET(set);
 }
 
 void hwloc_bitmap_fill(struct hwloc_bitmap_s * set)
@@ -748,7 +760,7 @@ int hwloc_bitmap_from_ulong(struct hwloc_bitmap_s *set, unsigned long mask)
 		 */
 	}
 	set->ulongs[0] = mask; /* there's always at least one ulong allocated */
-	set->infinite = 0;
+	INFINITE_CLR(set);
 	return 0;
 }
 
@@ -764,7 +776,7 @@ int hwloc_bitmap_from_ith_ulong(struct hwloc_bitmap_s *set, unsigned i, unsigned
 	set->ulongs[i] = mask;
 	for(j=0; j<i; j++)
 		set->ulongs[j] = HWLOC_SUBBITMAP_ZERO;
-	set->infinite = 0;
+	INFINITE_CLR(set);
 	return 0;
 }
 
@@ -817,7 +829,7 @@ int hwloc_bitmap_set(struct hwloc_bitmap_s * set, unsigned cpu)
 	HWLOC__BITMAP_CHECK(set);
 
 	/* nothing to do if setting inside the infinite part of the bitmap */
-	if (set->infinite && cpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
+	if (INFINITE_ISSET(set) && cpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
 		return 0;
 
 	if (hwloc_bitmap_realloc_by_cpu_index(set, cpu) < 0)
@@ -837,7 +849,7 @@ int hwloc_bitmap_set_range(struct hwloc_bitmap_s * set, unsigned begincpu, int _
 
 	if (endcpu < begincpu)
 		return 0;
-	if (set->infinite && begincpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
+	if (INFINITE_ISSET(set) && begincpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
 		/* setting only in the already-set infinite part, nothing to do */
 		return 0;
 
@@ -855,12 +867,12 @@ int hwloc_bitmap_set_range(struct hwloc_bitmap_s * set, unsigned begincpu, int _
 		for(i=beginset+1; i<set->ulongs_count; i++)
 			set->ulongs[i] = HWLOC_SUBBITMAP_FULL;
 		/* mark the infinity as set */
-		set->infinite = 1;
+		INFINITE_SET(set);
 	} else {
 		/* finite range */
 
 		/* ignore the part of the range that overlaps with the already-set infinite part */
-		if (set->infinite && endcpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
+		if (INFINITE_ISSET(set) && endcpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
 			endcpu = set->ulongs_count * HWLOC_BITS_PER_LONG - 1;
 		/* make sure we can play with the ulongs that contain begincpu and endcpu */
 		if (hwloc_bitmap_realloc_by_cpu_index(set, endcpu) < 0)
@@ -901,7 +913,7 @@ int hwloc_bitmap_clr(struct hwloc_bitmap_s * set, unsigned cpu)
 	HWLOC__BITMAP_CHECK(set);
 
 	/* nothing to do if clearing inside the infinitely-unset part of the bitmap */
-	if (!set->infinite && cpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
+	if (!INFINITE_ISSET(set) && cpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
 		return 0;
 
 	if (hwloc_bitmap_realloc_by_cpu_index(set, cpu) < 0)
@@ -922,7 +934,7 @@ int hwloc_bitmap_clr_range(struct hwloc_bitmap_s * set, unsigned begincpu, int _
 	if (endcpu < begincpu)
 		return 0;
 
-	if (!set->infinite && begincpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
+	if (!INFINITE_ISSET(set) && begincpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
 		/* clearing only in the already-unset infinite part, nothing to do */
 		return 0;
 
@@ -940,12 +952,12 @@ int hwloc_bitmap_clr_range(struct hwloc_bitmap_s * set, unsigned begincpu, int _
 		for(i=beginset+1; i<set->ulongs_count; i++)
 			set->ulongs[i] = HWLOC_SUBBITMAP_ZERO;
 		/* mark the infinity as unset */
-		set->infinite = 0;
+		INFINITE_CLR(set);
 	} else {
 		/* finite range */
 
 		/* ignore the part of the range that overlaps with the already-unset infinite part */
-		if (!set->infinite && endcpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
+		if (!INFINITE_ISSET(set) && endcpu >= set->ulongs_count * HWLOC_BITS_PER_LONG)
 			endcpu = set->ulongs_count * HWLOC_BITS_PER_LONG - 1;
 		/* make sure we can play with the ulongs that contain begincpu and endcpu */
 		if (hwloc_bitmap_realloc_by_cpu_index(set, endcpu) < 0)
@@ -983,7 +995,7 @@ int hwloc_bitmap_iszero(const struct hwloc_bitmap_s *set)
 
 	HWLOC__BITMAP_CHECK(set);
 
-	if (set->infinite)
+	if (INFINITE_ISSET(set))
 		return 0;
 	for(i=0; i<set->ulongs_count; i++)
 		if (set->ulongs[i] != HWLOC_SUBBITMAP_ZERO)
@@ -997,7 +1009,7 @@ int hwloc_bitmap_isfull(const struct hwloc_bitmap_s *set)
 
 	HWLOC__BITMAP_CHECK(set);
 
-	if (!set->infinite)
+	if (!INFINITE_ISSET(set))
 		return 0;
 	for(i=0; i<set->ulongs_count; i++)
 		if (set->ulongs[i] != HWLOC_SUBBITMAP_FULL)
@@ -1020,8 +1032,8 @@ int hwloc_bitmap_isequal (const struct hwloc_bitmap_s *set1, const struct hwloc_
 			return 0;
 
 	if (count1 != count2) {
-		unsigned long w1 = set1->infinite ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO;
-		unsigned long w2 = set2->infinite ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO;
+		unsigned long w1 = INFINITE_ISSET(set1) ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO;
+		unsigned long w2 = INFINITE_ISSET(set2) ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO;
 		for(i=min_count; i<count1; i++) {
 			if (set1->ulongs[i] != w2)
 				return 0;
@@ -1032,7 +1044,7 @@ int hwloc_bitmap_isequal (const struct hwloc_bitmap_s *set1, const struct hwloc_
 		}
 	}
 
-	if (set1->infinite != set2->infinite)
+	if (INFINITE_ISSET(set1) != INFINITE_ISSET(set2))
 		return 0;
 
 	return 1;
@@ -1053,19 +1065,19 @@ int hwloc_bitmap_intersects (const struct hwloc_bitmap_s *set1, const struct hwl
 			return 1;
 
 	if (count1 != count2) {
-		if (set2->infinite) {
+		if (INFINITE_ISSET(set2)) {
 			for(i=min_count; i<set1->ulongs_count; i++)
 				if (set1->ulongs[i])
 					return 1;
 		}
-		if (set1->infinite) {
+		if (INFINITE_ISSET(set1)) {
 			for(i=min_count; i<set2->ulongs_count; i++)
 				if (set2->ulongs[i])
 					return 1;
 		}
 	}
 
-	if (set1->infinite && set2->infinite)
+	if (INFINITE_ISSET(set1) && INFINITE_ISSET(set2))
 		return 1;
 
 	return 0;
@@ -1086,17 +1098,17 @@ int hwloc_bitmap_isincluded (const struct hwloc_bitmap_s *sub_set, const struct 
 			return 0;
 
 	if (super_count != sub_count) {
-		if (!super_set->infinite)
+		if (!INFINITE_ISSET(super_set))
 			for(i=min_count; i<sub_count; i++)
 				if (sub_set->ulongs[i])
 					return 0;
-		if (sub_set->infinite)
+		if (INFINITE_ISSET(sub_set))
 			for(i=min_count; i<super_count; i++)
 				if (super_set->ulongs[i] != HWLOC_SUBBITMAP_FULL)
 					return 0;
 	}
 
-	if (sub_set->infinite && !super_set->infinite)
+	if (INFINITE_ISSET(sub_set) && !INFINITE_ISSET(super_set))
 		return 0;
 
 	return 1;
@@ -1123,14 +1135,14 @@ int hwloc_bitmap_or (struct hwloc_bitmap_s *res, const struct hwloc_bitmap_s *se
 
 	if (count1 != count2) {
 		if (min_count < count1) {
-			if (set2->infinite) {
+			if (INFINITE_ISSET(set2)) {
 				res->ulongs_count = min_count;
 			} else {
 				for(i=min_count; i<max_count; i++)
 					res->ulongs[i] = set1->ulongs[i];
 			}
 		} else {
-			if (set1->infinite) {
+			if (INFINITE_ISSET(set1)) {
 				res->ulongs_count = min_count;
 			} else {
 				for(i=min_count; i<max_count; i++)
@@ -1139,7 +1151,10 @@ int hwloc_bitmap_or (struct hwloc_bitmap_s *res, const struct hwloc_bitmap_s *se
 		}
 	}
 
-	res->infinite = set1->infinite || set2->infinite;
+	if (INFINITE_ISSET(set1) || INFINITE_ISSET(set2))
+		INFINITE_SET(res);
+	else
+		INFINITE_CLR(res);
 	return 0;
 }
 
@@ -1164,14 +1179,14 @@ int hwloc_bitmap_and (struct hwloc_bitmap_s *res, const struct hwloc_bitmap_s *s
 
 	if (count1 != count2) {
 		if (min_count < count1) {
-			if (set2->infinite) {
+			if (INFINITE_ISSET(set2)) {
 				for(i=min_count; i<max_count; i++)
 					res->ulongs[i] = set1->ulongs[i];
 			} else {
 				res->ulongs_count = min_count;
 			}
 		} else {
-			if (set1->infinite) {
+			if (INFINITE_ISSET(set1)) {
 				for(i=min_count; i<max_count; i++)
 					res->ulongs[i] = set2->ulongs[i];
 			} else {
@@ -1180,7 +1195,10 @@ int hwloc_bitmap_and (struct hwloc_bitmap_s *res, const struct hwloc_bitmap_s *s
 		}
 	}
 
-	res->infinite = set1->infinite && set2->infinite;
+	if (INFINITE_ISSET(set1) && INFINITE_ISSET(set2))
+		INFINITE_SET(res);
+	else
+		INFINITE_CLR(res);
 	return 0;
 }
 
@@ -1205,14 +1223,14 @@ int hwloc_bitmap_andnot (struct hwloc_bitmap_s *res, const struct hwloc_bitmap_s
 
 	if (count1 != count2) {
 		if (min_count < count1) {
-			if (!set2->infinite) {
+			if (!INFINITE_ISSET(set2)) {
 				for(i=min_count; i<max_count; i++)
 					res->ulongs[i] = set1->ulongs[i];
 			} else {
 				res->ulongs_count = min_count;
 			}
 		} else {
-			if (set1->infinite) {
+			if (INFINITE_ISSET(set1)) {
 				for(i=min_count; i<max_count; i++)
 					res->ulongs[i] = ~set2->ulongs[i];
 			} else {
@@ -1221,7 +1239,10 @@ int hwloc_bitmap_andnot (struct hwloc_bitmap_s *res, const struct hwloc_bitmap_s
 		}
 	}
 
-	res->infinite = set1->infinite && !set2->infinite;
+	if (INFINITE_ISSET(set1) && !INFINITE_ISSET(set2))
+		INFINITE_SET(res);
+	else
+		INFINITE_CLR(res);
 	return 0;
 }
 
@@ -1246,17 +1267,20 @@ int hwloc_bitmap_xor (struct hwloc_bitmap_s *res, const struct hwloc_bitmap_s *s
 
 	if (count1 != count2) {
 		if (min_count < count1) {
-			unsigned long w2 = set2->infinite ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO;
+			unsigned long w2 = INFINITE_ISSET(set2) ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO;
 			for(i=min_count; i<max_count; i++)
 				res->ulongs[i] = set1->ulongs[i] ^ w2;
 		} else {
-			unsigned long w1 = set1->infinite ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO;
+			unsigned long w1 = INFINITE_ISSET(set1) ? HWLOC_SUBBITMAP_FULL : HWLOC_SUBBITMAP_ZERO;
 			for(i=min_count; i<max_count; i++)
 				res->ulongs[i] = set2->ulongs[i] ^ w1;
 		}
 	}
 
-	res->infinite = (!set1->infinite) != (!set2->infinite);
+	if (INFINITE_ISSET(set1) != INFINITE_ISSET(set2))
+		INFINITE_SET(res);
+	else
+		INFINITE_CLR(res);
 	return 0;
 }
 
@@ -1274,7 +1298,10 @@ int hwloc_bitmap_not (struct hwloc_bitmap_s *res, const struct hwloc_bitmap_s *s
 	for(i=0; i<count; i++)
 		res->ulongs[i] = ~set->ulongs[i];
 
-	res->infinite = !set->infinite;
+	if (INFINITE_ISSET(set))
+		INFINITE_CLR(res);
+	else
+		INFINITE_SET(res);
 	return 0;
 }
 
@@ -1291,7 +1318,7 @@ int hwloc_bitmap_first(const struct hwloc_bitmap_s * set)
 			return hwloc_ffsl(w) - 1 + HWLOC_BITS_PER_LONG*i;
 	}
 
-	if (set->infinite)
+	if (INFINITE_ISSET(set))
 		return set->ulongs_count * HWLOC_BITS_PER_LONG;
 
 	return -1;
@@ -1310,7 +1337,7 @@ int hwloc_bitmap_first_unset(const struct hwloc_bitmap_s * set)
 			return hwloc_ffsl(w) - 1 + HWLOC_BITS_PER_LONG*i;
 	}
 
-	if (!set->infinite)
+	if (!INFINITE_ISSET(set))
 		return set->ulongs_count * HWLOC_BITS_PER_LONG;
 
 	return -1;
@@ -1322,7 +1349,7 @@ int hwloc_bitmap_last(const struct hwloc_bitmap_s * set)
 
 	HWLOC__BITMAP_CHECK(set);
 
-	if (set->infinite)
+	if (INFINITE_ISSET(set))
 		return -1;
 
 	for(i=(int)set->ulongs_count-1; i>=0; i--) {
@@ -1341,7 +1368,7 @@ int hwloc_bitmap_last_unset(const struct hwloc_bitmap_s * set)
 
 	HWLOC__BITMAP_CHECK(set);
 
-	if (!set->infinite)
+	if (!INFINITE_ISSET(set))
 		return -1;
 
 	for(i=(int)set->ulongs_count-1; i>=0; i--) {
@@ -1361,7 +1388,7 @@ int hwloc_bitmap_next(const struct hwloc_bitmap_s * set, int prev_cpu)
 	HWLOC__BITMAP_CHECK(set);
 
 	if (i >= set->ulongs_count) {
-		if (set->infinite)
+		if (INFINITE_ISSET(set))
 			return prev_cpu + 1;
 		else
 			return -1;
@@ -1380,7 +1407,7 @@ int hwloc_bitmap_next(const struct hwloc_bitmap_s * set, int prev_cpu)
 			return hwloc_ffsl(w) - 1 + HWLOC_BITS_PER_LONG*i;
 	}
 
-	if (set->infinite)
+	if (INFINITE_ISSET(set))
 		return set->ulongs_count * HWLOC_BITS_PER_LONG;
 
 	return -1;
@@ -1393,7 +1420,7 @@ int hwloc_bitmap_next_unset(const struct hwloc_bitmap_s * set, int prev_cpu)
 	HWLOC__BITMAP_CHECK(set);
 
 	if (i >= set->ulongs_count) {
-		if (!set->infinite)
+		if (!INFINITE_ISSET(set))
 			return prev_cpu + 1;
 		else
 			return -1;
@@ -1412,7 +1439,7 @@ int hwloc_bitmap_next_unset(const struct hwloc_bitmap_s * set, int prev_cpu)
 			return hwloc_ffsl(w) - 1 + HWLOC_BITS_PER_LONG*i;
 	}
 
-	if (!set->infinite)
+	if (!INFINITE_ISSET(set))
 		return set->ulongs_count * HWLOC_BITS_PER_LONG;
 
 	return -1;
@@ -1440,13 +1467,13 @@ int hwloc_bitmap_singlify(struct hwloc_bitmap_s * set)
 		}
 	}
 
-	if (set->infinite) {
+	if (INFINITE_ISSET(set)) {
 		if (found) {
-			set->infinite = 0;
+			INFINITE_CLR(set);
 		} else {
 			/* set the first non allocated bit */
 			unsigned first = set->ulongs_count * HWLOC_BITS_PER_LONG;
-			set->infinite = 0; /* do not let realloc fill the newly allocated sets */
+			INFINITE_CLR(set); /* do not let realloc fill the newly allocated sets */
 			return hwloc_bitmap_set(set, first);
 		}
 	}
@@ -1483,7 +1510,7 @@ int hwloc_bitmap_compare_first(const struct hwloc_bitmap_s * set1, const struct 
 		if (min_count < count2) {
 			for(i=min_count; i<count2; i++) {
 				unsigned long w2 = set2->ulongs[i];
-				if (set1->infinite)
+				if (INFINITE_ISSET(set1))
 					return -!(w2 & 1);
 				else if (w2)
 					return 1;
@@ -1491,7 +1518,7 @@ int hwloc_bitmap_compare_first(const struct hwloc_bitmap_s * set1, const struct 
 		} else {
 			for(i=min_count; i<count1; i++) {
 				unsigned long w1 = set1->ulongs[i];
-				if (set2->infinite)
+				if (INFINITE_ISSET(set2))
 					return !(w1 & 1);
 				else if (w1)
 					return -1;
@@ -1499,7 +1526,7 @@ int hwloc_bitmap_compare_first(const struct hwloc_bitmap_s * set1, const struct 
 		}
 	}
 
-	return !!set1->infinite - !!set2->infinite;
+	return !!INFINITE_ISSET(set1) - !!INFINITE_ISSET(set2);
 }
 
 int hwloc_bitmap_compare(const struct hwloc_bitmap_s * set1, const struct hwloc_bitmap_s * set2)
@@ -1513,12 +1540,12 @@ int hwloc_bitmap_compare(const struct hwloc_bitmap_s * set1, const struct hwloc_
 	HWLOC__BITMAP_CHECK(set1);
 	HWLOC__BITMAP_CHECK(set2);
 
-	if ((!set1->infinite) != (!set2->infinite))
-		return !!set1->infinite - !!set2->infinite;
+	if (INFINITE_ISSET(set1) != INFINITE_ISSET(set2))
+		return !!INFINITE_ISSET(set1) - !!INFINITE_ISSET(set2);
 
 	if (count1 != count2) {
 		if (min_count < count2) {
-			unsigned long val1 = set1->infinite ? HWLOC_SUBBITMAP_FULL :  HWLOC_SUBBITMAP_ZERO;
+			unsigned long val1 = INFINITE_ISSET(set1) ? HWLOC_SUBBITMAP_FULL :  HWLOC_SUBBITMAP_ZERO;
 			for(i=(int)max_count-1; i>=(int) min_count; i--) {
 				unsigned long val2 = set2->ulongs[i];
 				if (val1 == val2)
@@ -1526,7 +1553,7 @@ int hwloc_bitmap_compare(const struct hwloc_bitmap_s * set1, const struct hwloc_
 				return val1 < val2 ? -1 : 1;
 			}
 		} else {
-			unsigned long val2 = set2->infinite ? HWLOC_SUBBITMAP_FULL :  HWLOC_SUBBITMAP_ZERO;
+			unsigned long val2 = INFINITE_ISSET(set2) ? HWLOC_SUBBITMAP_FULL :  HWLOC_SUBBITMAP_ZERO;
 			for(i=(int)max_count-1; i>=(int) min_count; i--) {
 				unsigned long val1 = set1->ulongs[i];
 				if (val1 == val2)
@@ -1554,7 +1581,7 @@ int hwloc_bitmap_weight(const struct hwloc_bitmap_s * set)
 
 	HWLOC__BITMAP_CHECK(set);
 
-	if (set->infinite)
+	if (INFINITE_ISSET(set))
 		return -1;
 
 	for(i=0; i<set->ulongs_count; i++)
@@ -1645,8 +1672,8 @@ int hwloc_bitmap_compare_inclusion(const struct hwloc_bitmap_s * set1, const str
 	  empty2 &= !val2;
 	}
 
-	if (!set1->infinite) {
-	  if (set2->infinite) {
+	if (!INFINITE_ISSET(set1)) {
+	  if (INFINITE_ISSET(set2)) {
 	    /* set2 infinite only */
 	    if (result == HWLOC_BITMAP_CONTAINS) {
 	      if (!empty2)
@@ -1657,7 +1684,7 @@ int hwloc_bitmap_compare_inclusion(const struct hwloc_bitmap_s * set1, const str
 	    }
 	    /* no change otherwise */
 	  }
-	} else if (!set2->infinite) {
+	} else if (!INFINITE_ISSET(set2)) {
 	  /* set1 infinite only */
 	  if (result == HWLOC_BITMAP_INCLUDED) {
 	    if (!empty1)
