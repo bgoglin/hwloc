@@ -38,8 +38,10 @@
 /* magic number */
 #define HWLOC_BITMAP_MAGIC 0x20091007
 
-/* preallocated bits in every bitmap */
-#define HWLOC_BITMAP_PREALLOC_BITS 512
+/* preallocated bits in every bitmap.
+ * take the configure'd value and round it up to the next full ulong
+ */
+#define HWLOC_BITMAP_PREALLOC_BITS (((HWLOC_BITMAP_PREALLOC_BITS_CONFIG+HWLOC_BITS_PER_LONG-1)/HWLOC_BITS_PER_LONG)*HWLOC_BITS_PER_LONG)
 #define HWLOC_BITMAP_PREALLOC_ULONGS (HWLOC_BITMAP_PREALLOC_BITS/HWLOC_BITS_PER_LONG)
 
 /* actual opaque type internals */

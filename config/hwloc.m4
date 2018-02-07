@@ -1057,6 +1057,18 @@ return clGetDeviceIDs(0, 0, 0, NULL, NULL);
        AC_MSG_ERROR([Cannot continue])])
 
     #
+    # Number of preallocated bits in bitmaps
+    #
+    AC_MSG_CHECKING(the number of preallocated bits in bitmaps)
+    AC_ARG_WITH([bitmap-prealloc],
+		AC_HELP_STRING([--with-bitmap-prealloc=N],
+			       [Number of bits in preallocated bitmap array (default is 512).]),
+	        [bitmap_prealloc="$with_bitmap_prealloc"],
+		[bitmap_prealloc=512])
+    AC_MSG_RESULT($bitmap_prealloc)
+    AC_DEFINE_UNQUOTED([HWLOC_BITMAP_PREALLOC_BITS_CONFIG], [$bitmap_prealloc], [Number of bits in preallocated bitmap array])
+
+    #
     # Now enable registration of listed components
     #
 
