@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2017 Inria.  All rights reserved.
+ * Copyright © 2009-2018 Inria.  All rights reserved.
  * Copyright © 2009-2011 Université Bordeaux
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -53,6 +53,7 @@ struct hwloc_bitmap_s {
 #ifdef HWLOC_DEBUG
   int magic;
 #endif
+  unsigned long static_ulongs[HWLOC_BITMAP_PREALLOC_ULONGS];
 };
 
 /* Hwloc Bitmap Flags */
@@ -103,11 +104,7 @@ struct hwloc_bitmap_s * hwloc_bitmap_alloc(void)
 
   set->ulongs_count = 1;
   set->ulongs_allocated = HWLOC_BITMAP_PREALLOC_ULONGS;
-  set->ulongs = malloc(HWLOC_BITMAP_PREALLOC_ULONGS * sizeof(unsigned long));
-  if (!set->ulongs) {
-    free(set);
-    return NULL;
-  }
+  set->ulongs = set->static_ulongs;
 
   set->ulongs[0] = HWLOC_SUBBITMAP_ZERO;
   set->flags = 0;
@@ -137,7 +134,8 @@ void hwloc_bitmap_free(struct hwloc_bitmap_s * set)
   set->magic = 0;
 #endif
 
-  free(set->ulongs);
+  if (set->ulongs != set->static_ulongs)
+    free(set->ulongs);
   free(set);
 }
 
@@ -151,7 +149,13 @@ hwloc_bitmap_enlarge_by_ulongs(struct hwloc_bitmap_s * set, unsigned needed_coun
   unsigned tmp = 1U << hwloc_flsl((unsigned long) needed_count - 1);
   if (tmp > set->ulongs_allocated) {
     unsigned long *tmpulongs;
-    tmpulongs = realloc(set->ulongs, tmp * sizeof(unsigned long));
+    if (set->ulongs == set->static_ulongs) {
+      tmpulongs = malloc(tmp * sizeof(unsigned long));
+      if (tmpulongs)
+	memcpy(tmpulongs, set->ulongs, set->ulongs_count * sizeof(unsigned long));
+    } else {
+      tmpulongs = realloc(set->ulongs, tmp * sizeof(unsigned long));
+    }
     if (!tmpulongs)
       return -1;
     set->ulongs = tmpulongs;
@@ -221,10 +225,14 @@ struct hwloc_bitmap_s * hwloc_bitmap_tma_dup(struct hwloc_tma *tma, const struct
   if (!new)
     return NULL;
 
-  new->ulongs = hwloc_tma_malloc(tma, old->ulongs_allocated * sizeof(unsigned long));
-  if (!new->ulongs) {
-    free(new);
-    return NULL;
+  if (old->ulongs == old->static_ulongs) {
+    new->ulongs = new->static_ulongs;
+  } else {
+    new->ulongs = hwloc_tma_malloc(tma, old->ulongs_allocated * sizeof(unsigned long));
+    if (!new->ulongs) {
+      free(new);
+      return NULL;
+    }
   }
   new->ulongs_allocated = old->ulongs_allocated;
   new->ulongs_count = old->ulongs_count;
