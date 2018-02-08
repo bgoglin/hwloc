@@ -15,22 +15,15 @@
 int main(void)
 {
   hwloc_bitmap_t set;
-  char setbuf[64]; /* for 512 bits */
   size_t dsize;
-  char *dsetbuf = NULL;
 
   /* user-allocated set */
   dsize = hwloc_bitmap_minspace();
   printf("bitmap minspace %lu\n", (unsigned long)dsize);
-  if (dsize > sizeof(setbuf)) {
-    printf("using our own malloc'ed setbuf\n");
-    dsetbuf = malloc(dsize);
-    assert(dsetbuf);
-    set = hwloc_bitmap_init(dsetbuf, dsize);
-  } else {
-    printf("using on-stack setbuf of size %ld\n", sizeof(setbuf));
-    set = hwloc_bitmap_init(setbuf, sizeof(setbuf));
-  }
+
+  char setbuf[dsize];
+  printf("using on-stack setbuf of size %ld\n", sizeof(setbuf));
+  set = hwloc_bitmap_init(setbuf, sizeof(setbuf));
   assert(set);
 
   /* check an empty bitmap */
@@ -376,7 +369,6 @@ int main(void)
   assert(hwloc_bitmap_last(set) == 128);
 
   hwloc_bitmap_free(set);
-  free(dsetbuf);
 
   return 0;
 }
