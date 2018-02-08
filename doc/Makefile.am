@@ -492,8 +492,9 @@ man3_bitmapdir = $(man3dir)
 man3_bitmap_DATA = \
         $(DOX_MAN_DIR)/man3/hwlocality_bitmap.3 \
         $(DOX_MAN_DIR)/man3/hwloc_bitmap_allbut.3 \
-        $(DOX_MAN_DIR)/man3/hwloc_bitmap_alloc.3 \
         $(DOX_MAN_DIR)/man3/hwloc_bitmap_alloc_full.3 \
+        $(DOX_MAN_DIR)/man3/hwloc_bitmap_init.3 \
+        $(DOX_MAN_DIR)/man3/hwloc_bitmap_minspace.3 \
         $(DOX_MAN_DIR)/man3/hwloc_bitmap_and.3 \
         $(DOX_MAN_DIR)/man3/hwloc_bitmap_andnot.3 \
         $(DOX_MAN_DIR)/man3/hwloc_bitmap_asprintf.3 \

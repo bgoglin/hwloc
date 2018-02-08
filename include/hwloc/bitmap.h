@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2017 Inria.  All rights reserved.
+ * Copyright © 2009-2018 Inria.  All rights reserved.
  * Copyright © 2009-2012 Université Bordeaux
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -72,6 +72,19 @@ HWLOC_DECLSPEC hwloc_bitmap_t hwloc_bitmap_alloc(void) __hwloc_attribute_malloc;
 
 /** \brief Allocate a new full bitmap. */
 HWLOC_DECLSPEC hwloc_bitmap_t hwloc_bitmap_alloc_full(void) __hwloc_attribute_malloc;
+
+/** \brief Use the given user-allocate buffer for storing a bitmap.
+ *
+ * The bitmap may still get automatic internal allocation later if the bitmap
+ * needs to grow to larger indexes.
+ *
+ * \return -1 with \c errno set to EINVAL if buffer is not large enough.
+ */
+HWLOC_DECLSPEC hwloc_bitmap_t hwloc_bitmap_init(void *buffer, size_t length);
+
+  /* TODO pass optional topology */
+  /* TODO pass optional max index */
+HWLOC_DECLSPEC size_t hwloc_bitmap_minspace(void);
 
 /** \brief Free bitmap \p bitmap.
  *

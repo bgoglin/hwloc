@@ -132,6 +132,11 @@ struct hwloc_bitmap_s * hwloc_bitmap_alloc_full(void)
   return set;
 }
 
+size_t hwloc_bitmap_minspace(void)
+{
+  return sizeof(struct hwloc_bitmap_s);
+}
+
 struct hwloc_bitmap_s * hwloc_bitmap_init(void *buffer, size_t length)
 {
   struct hwloc_bitmap_s *set = buffer;

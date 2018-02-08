@@ -251,6 +251,8 @@ extern "C" {
 
 #define hwloc_bitmap_alloc HWLOC_NAME(bitmap_alloc)
 #define hwloc_bitmap_alloc_full HWLOC_NAME(bitmap_alloc_full)
+#define hwloc_bitmap_init HWLOC_NAME(bitmap_init)
+#define hwloc_bitmap_minspace HWLOC_NAME(bitmap_minspace)
 #define hwloc_bitmap_free HWLOC_NAME(bitmap_free)
 #define hwloc_bitmap_dup HWLOC_NAME(bitmap_dup)
 #define hwloc_bitmap_copy HWLOC_NAME(bitmap_copy)
