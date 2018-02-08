@@ -58,6 +58,7 @@ struct hwloc_bitmap_s {
 
 /* Hwloc Bitmap Flags */
 #define HBF_INFINITE (1<<0) /* if all bits beyond ulongs are set */ /* MUST remain ==1 if we ever have infinite bitmaps in shmem clones */
+#define HBF_USER_ALLOC (1<<1) /* bitmap was allocated by the user, don't free it */
 
 #define HBF_COPIED_FLAGS (HBF_INFINITE) /* flags that are copied/dup'ed between bitmaps */
 
@@ -65,6 +66,8 @@ struct hwloc_bitmap_s {
 #define INFINITE_SET(set) (set)->flags |= HBF_INFINITE
 #define INFINITE_CLR(set) (set)->flags &= ~HBF_INFINITE
 
+#define USER_ALLOC_ISSET(set) ((set)->flags & HBF_USER_ALLOC)
+#define USER_ALLOC_SET(set) ((set)->flags |= HBF_USER_ALLOC)
 
 /* overzealous check in debug-mode, not as powerful as valgrind but still useful */
 #ifdef HWLOC_DEBUG
@@ -94,14 +97,8 @@ struct hwloc_bitmap_s {
 #define HWLOC_SUBBITMAP_ULBIT_FROM(bit)		(HWLOC_SUBBITMAP_FULL<<(bit))
 #define HWLOC_SUBBITMAP_ULBIT_FROMTO(begin,end)	(HWLOC_SUBBITMAP_ULBIT_TO(end) & HWLOC_SUBBITMAP_ULBIT_FROM(begin))
 
-struct hwloc_bitmap_s * hwloc_bitmap_alloc(void)
+static void hwloc__bitmap_init(struct hwloc_bitmap_s *set)
 {
-  struct hwloc_bitmap_s * set;
-
-  set = malloc(sizeof(struct hwloc_bitmap_s));
-  if (!set)
-    return NULL;
-
   set->ulongs_count = 1;
   set->ulongs_allocated = HWLOC_BITMAP_PREALLOC_ULONGS;
   set->ulongs = set->static_ulongs;
@@ -111,6 +108,17 @@ struct hwloc_bitmap_s * hwloc_bitmap_alloc(void)
 #ifdef HWLOC_DEBUG
   set->magic = HWLOC_BITMAP_MAGIC;
 #endif
+}
+
+struct hwloc_bitmap_s * hwloc_bitmap_alloc(void)
+{
+  struct hwloc_bitmap_s * set;
+
+  set = malloc(sizeof(struct hwloc_bitmap_s));
+  if (!set)
+    return NULL;
+
+  hwloc__bitmap_init(set);
   return set;
 }
 
@@ -121,6 +129,21 @@ struct hwloc_bitmap_s * hwloc_bitmap_alloc_full(void)
     INFINITE_SET(set);
     set->ulongs[0] = HWLOC_SUBBITMAP_FULL;
   }
+  return set;
+}
+
+struct hwloc_bitmap_s * hwloc_bitmap_init(void *buffer, size_t length)
+{
+  struct hwloc_bitmap_s *set = buffer;
+
+  if (length < sizeof(struct hwloc_bitmap_s)) {
+    errno = EINVAL;
+    return NULL;
+  }
+  /* FIXME: larger ulongs if available */
+
+  hwloc__bitmap_init(set);
+  USER_ALLOC_SET(set);
   return set;
 }
 
@@ -136,7 +159,8 @@ void hwloc_bitmap_free(struct hwloc_bitmap_s * set)
 
   if (set->ulongs != set->static_ulongs)
     free(set->ulongs);
-  free(set);
+  if (!USER_ALLOC_ISSET(set))
+    free(set);
 }
 
 /* enlarge until it contains at least needed_count ulongs.
