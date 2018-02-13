@@ -665,5 +665,6 @@
 /* Define this to the thread ID type */
 #define hwloc_thread_t HANDLE
 
+#define HWLOC_BITMAP_PREALLOC_BITS_CONFIG 512
 
 #endif /* HWLOC_CONFIGURE_H */
