@@ -44,6 +44,13 @@
 #define HWLOC_BITMAP_PREALLOC_BITS (((HWLOC_BITMAP_PREALLOC_BITS_CONFIG+HWLOC_BITS_PER_LONG-1)/HWLOC_BITS_PER_LONG)*HWLOC_BITS_PER_LONG)
 #define HWLOC_BITMAP_PREALLOC_ULONGS (HWLOC_BITMAP_PREALLOC_BITS/HWLOC_BITS_PER_LONG)
 
+#if defined HWLOC_WIN_SYS && !defined __MINGW32__
+#define HWLOC_BITMAP_STATIC_ULONGS_NR 1
+#define HWLOC_HAVE_BITMAP_STATIC_ULONGS_NR
+#else
+#define HWLOC_BITMAP_STATIC_ULONGS_NR
+#endif
+
 /* actual opaque type internals */
 struct hwloc_bitmap_s {
   unsigned ulongs_count; /* how many ulong bitmasks are valid, >= 1 */
@@ -53,8 +60,14 @@ struct hwloc_bitmap_s {
 #ifdef HWLOC_DEBUG
   int magic;
 #endif
-  unsigned long static_ulongs[HWLOC_BITMAP_PREALLOC_ULONGS];
+  unsigned long static_ulongs[HWLOC_BITMAP_STATIC_ULONGS_NR];
 };
+
+#ifdef HWLOC_HAVE_BITMAP_STATIC_ULONGS_NR
+#define hwloc_bitmap_sizeof(nr_ulongs) (sizeof(struct hwloc_bitmap_s)+((nr_ulongs)-HWLOC_BITMAP_STATIC_ULONGS_NR)*sizeof(unsigned long))
+#else
+#define hwloc_bitmap_sizeof(nr_ulongs) (sizeof(struct hwloc_bitmap_s)+(nr_ulongs)*sizeof(unsigned long))
+#endif
 
 /* Hwloc Bitmap Flags */
 #define HBF_INFINITE (1<<0) /* if all bits beyond ulongs are set */ /* MUST remain ==1 if we ever have infinite bitmaps in shmem clones */
@@ -114,7 +127,7 @@ struct hwloc_bitmap_s * hwloc_bitmap_alloc(void)
 {
   struct hwloc_bitmap_s * set;
 
-  set = malloc(sizeof(struct hwloc_bitmap_s));
+  set = malloc(hwloc_bitmap_sizeof(HWLOC_BITMAP_PREALLOC_ULONGS));
   if (!set)
     return NULL;
 
@@ -134,14 +147,14 @@ struct hwloc_bitmap_s * hwloc_bitmap_alloc_full(void)
 
 size_t hwloc_bitmap_minspace(void)
 {
-  return sizeof(struct hwloc_bitmap_s);
+  return hwloc_bitmap_sizeof(HWLOC_BITMAP_PREALLOC_ULONGS);
 }
 
 struct hwloc_bitmap_s * hwloc_bitmap_init(void *buffer, size_t length)
 {
   struct hwloc_bitmap_s *set = buffer;
 
-  if (length < sizeof(struct hwloc_bitmap_s)) {
+  if (length < hwloc_bitmap_sizeof(HWLOC_BITMAP_PREALLOC_ULONGS)) {
     errno = EINVAL;
     return NULL;
   }
@@ -250,7 +263,7 @@ struct hwloc_bitmap_s * hwloc_bitmap_tma_dup(struct hwloc_tma *tma, const struct
 
   HWLOC__BITMAP_CHECK(old);
 
-  new = hwloc_tma_malloc(tma, sizeof(struct hwloc_bitmap_s));
+  new = hwloc_tma_malloc(tma, hwloc_bitmap_sizeof(HWLOC_BITMAP_PREALLOC_ULONGS));
   if (!new)
     return NULL;
 
