@@ -135,6 +135,14 @@ hwloc_hpux_set_thisthread_cpubind(hwloc_topology_t topology, hwloc_const_bitmap_
 }
 #endif
 
+static int
+hwloc_hpux_get_thisthread_last_cpu_location(hwloc_topology_t topology __hwloc_attribute_unused, hwloc_bitmap_t hwloc_set, int flags __hwloc_attribute_unused)
+{
+  int pu = mpctl(MPC_GETCURRENTSPU, 0, 0);
+  hwloc_bitmap_only(hwloc_set, pu);
+  return 0;
+}
+
 /* According to HP docs, HP-UX up to 11iv2 don't support migration */
 
 #ifdef MAP_MEM_FIRST_TOUCH
@@ -329,6 +337,7 @@ hwloc_set_hpux_hooks(struct hwloc_binding_hooks *hooks,
   hooks->set_thread_cpubind = hwloc_hpux_set_thread_cpubind;
   hooks->set_thisthread_cpubind = hwloc_hpux_set_thisthread_cpubind;
 #endif
+  hooks->get_thisthread_last_cpu_location = hwloc_hpux_get_thisthread_last_cpu_location;
 #ifdef MAP_MEM_FIRST_TOUCH
   hooks->alloc_membind = hwloc_hpux_alloc_membind;
   hooks->alloc = hwloc_alloc_mmap;
