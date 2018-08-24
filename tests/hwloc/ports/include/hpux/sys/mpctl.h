@@ -1,5 +1,5 @@
 /*
- * Copyright © 2009-2015 Inria.  All rights reserved.
+ * Copyright © 2009-2018 Inria.  All rights reserved.
  * Copyright © 2009 Université Bordeaux
  * See COPYING in top-level directory.
  */
@@ -38,6 +38,17 @@ typedef enum mpc_request {
   MPC_SPUTOLDOM,
   MPC_LDOMSPUS,
   MPC_LDOMSPUS_SYS,
+
+  MPC_GETNUMCORES,
+  MPC_GETFIRSTCORE,
+  MPC_GETNEXTCORE,
+  MPC_GETNUMCORES_SYS,
+  MPC_GETFIRSTCORE_SYS,
+  MPC_GETNEXTCORE_SYS,
+
+  MPC_SPUTOCORE,
+  MPC_LDOMCORES,
+  MPC_LDOMCORES_SYS,
 
   MPC_GETPROCESS_BINDVALUE,
   MPC_GETLWP_BINDVALUE

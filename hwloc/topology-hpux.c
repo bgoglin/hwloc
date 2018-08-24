@@ -181,7 +181,8 @@ hwloc_look_hpux(struct hwloc_backend *backend)
   int has_numa = sysconf(_SC_CCNUMA_SUPPORT) == 1;
   spu_t currentcpu;
   ldom_t currentnode;
-  int i, nbnodes = 0;
+  spu_t currentcore;
+  int i, nbnodes = 0, nbcores = 0;
 
   if (topology->levels[0][0]->cpuset)
     /* somebody discovered things */
@@ -189,13 +190,16 @@ hwloc_look_hpux(struct hwloc_backend *backend)
 
   hwloc_alloc_root_sets(topology->levels[0][0]);
 
+  nbcores = mpctl((topology->flags & HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM) ?
+		  MPC_GETNUMCORES_SYS : MPC_GETNUMCORES, 0, 0);
+
   if (has_numa) {
     nbnodes = mpctl((topology->flags & HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM) ?
       MPC_GETNUMLDOMS_SYS : MPC_GETNUMLDOMS, 0, 0);
   }
   hwloc_debug("%d nodes\n", nbnodes);
 
-  hwloc_obj_t nodes[nbnodes], obj;
+  hwloc_obj_t nodes[nbnodes], cores[nbcores], obj;
 
   if (has_numa) {
     /* gather all NUMA nodes we care about */
@@ -226,6 +230,20 @@ hwloc_look_hpux(struct hwloc_backend *backend)
     }
   }
 
+  /* gather all cores we care about */
+  i = 0;
+  currentcore = mpctl((topology->flags & HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM) ?
+		      MPC_GETFIRSTCORE_SYS : MPC_GETFIRSTCORE, 0, 0);
+  while (currentcore != -1 && i < nbcores) {
+    hwloc_debug("core %d is %d\n", i, currentcore);
+    cores[i] = obj = hwloc_alloc_setup_object(topology, HWLOC_OBJ_CORE, (unsigned) currentcore);
+    obj->cpuset = hwloc_bitmap_alloc();
+
+    currentcore = mpctl((topology->flags & HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM) ?
+			MPC_GETNEXTCORE_SYS : MPC_GETNEXTCORE, currentcore, 0);
+    i++;
+  }
+
   /* gather all PUs we care about */
   i = 0;
   currentcpu = mpctl((topology->flags & HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM) ?
@@ -253,6 +271,19 @@ hwloc_look_hpux(struct hwloc_backend *backend)
       }
     }
 
+    /* Add this cpu to its core */
+    currentcore = mpctl(MPC_SPUTOCORE, currentcore, 0);
+    if (i >= nbcores || (spu_t) cores[i]->os_index != currentcore)
+      for (i = 0; i < nbcores; i++)
+	if ((spu_t) cores[i]->os_index == currentcore)
+	  break;
+    if (i < nbcores) {
+      hwloc_bitmap_set(cores[i]->cpuset, currentcpu);
+      hwloc_debug("is in core %d\n", i);
+    } else {
+      hwloc_debug("%s", "is in no core?!\n");
+    }
+
     /* Add cpu */
     hwloc_insert_object_by_cpuset(topology, obj);
 
@@ -274,6 +305,10 @@ hwloc_look_hpux(struct hwloc_backend *backend)
     for (i = 0 ; i < nbnodes ; i++)
       hwloc_insert_object_by_cpuset(topology, nodes[i]);
   }
+
+  /* Add cores */
+  for (i = 0 ; i < nbcores ; i++)
+    hwloc_insert_object_by_cpuset(topology, cores[i]);
 
   topology->support.discovery->pu = 1;
   if (has_numa)
