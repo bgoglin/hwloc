@@ -198,6 +198,7 @@ hwloc_look_hpux(struct hwloc_backend *backend)
   hwloc_obj_t nodes[nbnodes], obj;
 
   if (has_numa) {
+    /* gather all NUMA nodes we care about */
     i = 0;
     currentnode = mpctl((topology->flags & HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM) ?
       MPC_GETFIRSTLDOM_SYS : MPC_GETFIRSTLDOM, 0, 0);
@@ -214,8 +215,18 @@ hwloc_look_hpux(struct hwloc_backend *backend)
         MPC_GETNEXTLDOM_SYS : MPC_GETNEXTLDOM, currentnode, 0);
       i++;
     }
+    /* if WHOLE_SYSTEM, also gather only the allowed nodes */
+    if (topology->flags & HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM) {
+      hwloc_bitmap_zero(topology->allowed_nodeset);
+      currentnode = mpctl(MPC_GETFIRSTLDOM, 0, 0);
+      while (currentnode != -1) {
+	hwloc_bitmap_set(topology->allowed_nodeset, currentnode);
+	currentnode = mpctl(MPC_GETNEXTLDOM, currentnode, 0);
+      }
+    }
   }
 
+  /* gather all PUs we care about */
   i = 0;
   currentcpu = mpctl((topology->flags & HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM) ?
       MPC_GETFIRSTSPU_SYS : MPC_GETFIRSTSPU, 0,0);
@@ -247,6 +258,15 @@ hwloc_look_hpux(struct hwloc_backend *backend)
 
     currentcpu = mpctl((topology->flags & HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM) ?
       MPC_GETNEXTSPU_SYS : MPC_GETNEXTSPU, currentcpu, 0);
+  }
+  /* if WHOLE_SYSTEM, also gather only the allowed PUs */
+  if (topology->flags & HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM) {
+    hwloc_bitmap_zero(topology->allowed_cpuset);
+    currentcpu = mpctl(MPC_GETFIRSTSPU, 0, 0);
+    while (currentcpu != -1) {
+      hwloc_bitmap_set(topology->allowed_cpuset, currentcpu);
+      currentcpu = mpctl(MPC_GETNEXTSPU, currentcpu, 0);
+    }
   }
 
   if (has_numa) {
