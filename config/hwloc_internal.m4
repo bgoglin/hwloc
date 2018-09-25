@@ -104,6 +104,11 @@ AC_DEFUN([HWLOC_DEFINE_ARGS],[
                   AS_HELP_STRING([--enable-plugins=name,...],
                                  [Build the given components as dynamically-loaded plugins]))
 
+    # Clang-cl linker
+    AC_ARG_ENABLE([clang-cl-linker],
+		  AS_HELP_STRING([--enable-clang-cl-linker],
+				 [Use clang-cl specific linker flags for linking the library]))
+
 ])dnl
 
 #-----------------------------------------------------------------------

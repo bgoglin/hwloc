@@ -167,7 +167,12 @@ if HWLOC_HAVE_WINDOWS
 
 LC_MESSAGES=C
 export LC_MESSAGES
+
+if HWLOC_CLANG_CL_LINKER
+ldflags += -Xlinker -def:.libs/libhwloc.def
+else
 ldflags += -Xlinker --output-def -Xlinker .libs/libhwloc.def
+endif
 
 if HWLOC_HAVE_MS_LIB
 dolib$(EXEEXT): dolib.c
