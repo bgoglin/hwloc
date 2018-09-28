@@ -513,7 +513,7 @@ hwloc__obj_type_is_icache(hwloc_obj_type_t type)
 #define hwloc_localeswitch_fini()
 #endif /* HAVE_USELOCALE */
 
-#if !HAVE_DECL_FABSF
+#ifndef HWLOC_HAVE_DECL_FABSF
 #define fabsf(f) fabs((double)(f))
 #endif
 

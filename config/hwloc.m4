@@ -447,7 +447,8 @@ EOF])
                     AC_DEFINE([HAVE_LIBKSTAT], 1, [Define to 1 if we have -lkstat])])
     ])
 
-    AC_CHECK_DECLS([fabsf], [
+    _HWLOC_CHECK_DECL([fabsf], [
+      AC_DEFINE([HWLOC_HAVE_DECL_FABSF], [1], [Define to 1 if function `fabsf' is declared by system headers])
       AC_CHECK_LIB([m], [fabsf],
                    [need_libm=yes])
     ], [], [[#include <math.h>]])
