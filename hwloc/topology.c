@@ -3571,15 +3571,20 @@ hwloc__topology_init (struct hwloc_topology **topologyp,
 {
   struct hwloc_topology *topology;
 
+printf("INIT0\n");
   topology = hwloc_tma_malloc (tma, sizeof (struct hwloc_topology));
   if(!topology)
     return -1;
 
   topology->tma = tma;
 
+printf("INIT1\n");
   hwloc_components_init(); /* uses malloc without tma, but won't need it since dup() caller already took a reference */
+printf("INIT2\n");
   hwloc_topology_components_init(topology);
+printf("INIT3\n");
   hwloc_pci_discovery_init(topology); /* make sure both dup() and load() get sane variables */
+printf("INIT4\n");
 
   /* Setup topology context */
   topology->is_loaded = 0;
@@ -3591,26 +3596,33 @@ hwloc__topology_init (struct hwloc_topology **topologyp,
   topology->adopted_shmem_addr = NULL;
   topology->adopted_shmem_length = 0;
 
+printf("INIT5\n");
   topology->support.discovery = hwloc_tma_malloc(tma, sizeof(*topology->support.discovery));
   topology->support.cpubind = hwloc_tma_malloc(tma, sizeof(*topology->support.cpubind));
   topology->support.membind = hwloc_tma_malloc(tma, sizeof(*topology->support.membind));
 
+printf("INIT6\n");
   topology->nb_levels_allocated = nblevels; /* enough for default 10 levels = Mach+Pack+Die+NUMA+L3+L2+L1d+L1i+Co+PU */
   topology->levels = hwloc_tma_calloc(tma, topology->nb_levels_allocated * sizeof(*topology->levels));
   topology->level_nbobjects = hwloc_tma_calloc(tma, topology->nb_levels_allocated * sizeof(*topology->level_nbobjects));
 
+printf("INIT7\n");
   hwloc__topology_filter_init(topology);
 
+printf("INIT8\n");
   hwloc_internal_distances_init(topology);
 
+printf("INIT9\n");
   topology->userdata_export_cb = NULL;
   topology->userdata_import_cb = NULL;
   topology->userdata_not_decoded = 0;
 
   /* Make the topology look like something coherent but empty */
   hwloc_topology_setup_defaults(topology);
+printf("INIT10\n");
 
   *topologyp = topology;
+printf("INIT RETURN\n");
   return 0;
 }
 
