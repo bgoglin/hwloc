@@ -55,18 +55,18 @@ int main(void)
     offset = offsetof(struct hwloc_topology, binding_hooks);
     assert(offset == 456);
     size = sizeof(struct hwloc_binding_hooks);
-    assert(size == 192);
+    assert(size == 208);
 
     offset = offsetof(struct hwloc_topology, support);
-    assert(offset == 648);
+    assert(offset == 664);
 
     offset = offsetof(struct hwloc_topology, first_dist);
-    assert(offset == 704);
+    assert(offset == 720);
     size = sizeof(struct hwloc_internal_distances_s);
     assert(size == 88);
 
     offset = offsetof(struct hwloc_topology, memattrs);
-    assert(offset == 728);
+    assert(offset == 744);
     size = sizeof(struct hwloc_internal_memattr_s);
     assert(size == 32);
     size = sizeof(struct hwloc_internal_memattr_target_s);
@@ -77,7 +77,7 @@ int main(void)
     assert(size == 32);
 
     offset = offsetof(struct hwloc_topology, grouping_next_subkind);
-    assert(offset == 768);
+    assert(offset == 784);
 
     /* fields after this one aren't needed after discovery */
 

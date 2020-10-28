@@ -1234,20 +1234,34 @@ static int
 look_procs(struct hwloc_backend *backend, struct procinfo *infos, unsigned long flags,
 	   unsigned highest_cpuid, unsigned highest_ext_cpuid, unsigned *features, enum cpuid_type cpuid_type,
 	   int (*get_cpubind)(hwloc_topology_t topology, hwloc_cpuset_t set, int flags),
-	   int (*set_cpubind)(hwloc_topology_t topology, hwloc_const_cpuset_t set, int flags))
+	   int (*set_cpubind)(hwloc_topology_t topology, hwloc_const_cpuset_t set, int flags),
+           int (*save_binding)(hwloc_topology_t topology, void **private_data),
+           int (*restore_binding)(hwloc_topology_t topology, void *private_data))
+
 {
   struct hwloc_x86_backend_data_s *data = backend->private_data;
   struct hwloc_topology *topology = backend->topology;
   unsigned nbprocs = data->nbprocs;
+  void *binding_private_data = NULL;
   hwloc_bitmap_t orig_cpuset = NULL;
   hwloc_bitmap_t set = NULL;
   unsigned i;
 
+  assert(!save_binding == !restore_binding); /* we want either both or none */
+
   if (!data->src_cpuiddump_path) {
-    orig_cpuset = hwloc_bitmap_alloc();
-    if (get_cpubind(topology, orig_cpuset, HWLOC_CPUBIND_STRICT)) {
-      hwloc_bitmap_free(orig_cpuset);
-      return -1;
+    if (save_binding) {
+      /* only use the save/restore_binding hooks */
+      if (save_binding(topology, &binding_private_data) < 0) {
+        return -1;
+      }
+    } else {
+      /* just use the get/set_cpubind hooks for saving/restoring */
+      orig_cpuset = hwloc_bitmap_alloc();
+      if (get_cpubind(topology, orig_cpuset, HWLOC_CPUBIND_STRICT)) {
+        hwloc_bitmap_free(orig_cpuset);
+        return -1;
+      }
     }
     set = hwloc_bitmap_alloc();
   }
@@ -1275,9 +1289,15 @@ look_procs(struct hwloc_backend *backend, struct procinfo *infos, unsigned long 
   }
 
   if (!data->src_cpuiddump_path) {
-    set_cpubind(topology, orig_cpuset, 0);
+    if (restore_binding) {
+      /* only use the save/restore_binding hooks */
+      restore_binding(topology, binding_private_data);
+    } else {
+      /* just use the get/set_cpubind hooks for saving/restoring */
+      set_cpubind(topology, orig_cpuset, 0);
+      hwloc_bitmap_free(orig_cpuset);
+    }
     hwloc_bitmap_free(set);
-    hwloc_bitmap_free(orig_cpuset);
   }
 
   if (data->apicid_unique)
@@ -1369,6 +1389,8 @@ int hwloc_look_x86(struct hwloc_backend *backend, unsigned long flags)
   struct hwloc_topology_membind_support memsupport __hwloc_attribute_unused;
   int (*get_cpubind)(hwloc_topology_t topology, hwloc_cpuset_t set, int flags) = NULL;
   int (*set_cpubind)(hwloc_topology_t topology, hwloc_const_cpuset_t set, int flags) = NULL;
+  int (*save_binding)(hwloc_topology_t topology, void **private_data) = NULL;
+  int (*restore_binding)(hwloc_topology_t topology, void *private_data) = NULL;
   struct cpuiddump *src_cpuiddump = NULL;
   int ret = -1;
 
@@ -1391,6 +1413,10 @@ int hwloc_look_x86(struct hwloc_backend *backend, unsigned long flags)
      * but the current overhead is negligible, so just always reget them.
      */
     hwloc_set_native_binding_hooks(&hooks, &support);
+
+    save_binding = hooks.save_binding;
+    restore_binding = hooks.restore_binding;
+
     if (hooks.get_thisthread_cpubind && hooks.set_thisthread_cpubind) {
       get_cpubind = hooks.get_thisthread_cpubind;
       set_cpubind = hooks.set_thisthread_cpubind;
@@ -1402,7 +1428,10 @@ int hwloc_look_x86(struct hwloc_backend *backend, unsigned long flags)
       get_cpubind = hooks.get_thisproc_cpubind;
       set_cpubind = hooks.set_thisproc_cpubind;
     } else {
-      /* we need binding support if there are multiple PUs */
+      /* we need binding support if there are multiple PUs.
+       * FIXME: could work if we have set_cpubind + save/restore_binding without get_cpubind,
+       * but that's unlikely to ever happen in any backend.
+       */
       if (nbprocs > 1)
 	goto out;
       get_cpubind = fake_get_cpubind;
@@ -1473,7 +1502,9 @@ int hwloc_look_x86(struct hwloc_backend *backend, unsigned long flags)
 
   ret = look_procs(backend, infos, flags,
 		   highest_cpuid, highest_ext_cpuid, features, cpuid_type,
-		   get_cpubind, set_cpubind);
+		   get_cpubind, set_cpubind,
+                   save_binding, restore_binding);
+
   if (!ret)
     /* success, we're done */
     goto out_with_os_state;

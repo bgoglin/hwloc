@@ -40,7 +40,7 @@
 #endif
 #include <string.h>
 
-#define HWLOC_TOPOLOGY_ABI 0x20300 /* version of the layout of struct topology */
+#define HWLOC_TOPOLOGY_ABI 0x20400 /* version of the layout of struct topology */
 
 struct hwloc_internal_location_s {
   enum hwloc_location_type_e type;
@@ -133,6 +133,12 @@ struct hwloc_topology {
     int (*free_membind)(hwloc_topology_t topology, void *addr, size_t len);
 
     int (*get_allowed_resources)(hwloc_topology_t topology);
+
+    /* hooks for the x86 backend when moving the current thread to every PU.
+     * only necessary if set/get_thisthread_cpubind do not restore everything correctly.
+     */
+    int (*save_binding)(hwloc_topology_t topology, void **private_data);
+    int (*restore_binding)(hwloc_topology_t topology, void *private_data);
   } binding_hooks;
 
   struct hwloc_topology_support support;

@@ -402,21 +402,8 @@ hwloc_win_get_thisthread_last_cpu_location(hwloc_topology_t topology __hwloc_att
 /* TODO: SetThreadIdealProcessor{,Ex} */
 
 static int
-hwloc_win_set_thread_cpubind(hwloc_topology_t topology __hwloc_attribute_unused, hwloc_thread_t thread, hwloc_const_bitmap_t hwloc_set, int flags)
+hwloc_win__set_thread_cpubind(hwloc_thread_t thread, unsigned group, DWORD_PTR mask)
 {
-  DWORD_PTR mask;
-  unsigned group;
-
-  if (flags & HWLOC_CPUBIND_NOMEMBIND) {
-    errno = ENOSYS;
-    return -1;
-  }
-
-  if (hwloc_bitmap_to_single_ULONG_PTR(hwloc_set, &group, &mask) < 0) {
-    errno = ENOSYS;
-    return -1;
-  }
-
   assert(nr_processor_groups == 1 || SetThreadGroupAffinityProc);
 
   if (nr_processor_groups > 1) {
@@ -434,6 +421,25 @@ hwloc_win_set_thread_cpubind(hwloc_topology_t topology __hwloc_attribute_unused,
       return -1;
   }
   return 0;
+}
+
+static int
+hwloc_win_set_thread_cpubind(hwloc_topology_t topology __hwloc_attribute_unused, hwloc_thread_t thread, hwloc_const_bitmap_t hwloc_set, int flags)
+{
+  DWORD_PTR mask;
+  unsigned group;
+
+  if (flags & HWLOC_CPUBIND_NOMEMBIND) {
+    errno = ENOSYS;
+    return -1;
+  }
+
+  if (hwloc_bitmap_to_single_ULONG_PTR(hwloc_set, &group, &mask) < 0) {
+    errno = ENOSYS;
+    return -1;
+  }
+
+  return hwloc_win__set_thread_cpubind(thread, group, mask);
 }
 
 static int
@@ -474,7 +480,7 @@ hwloc_win_set_thisthread_membind(hwloc_topology_t topology, hwloc_const_nodeset_
  */
 
 static int
-hwloc_win_get_thread_cpubind(hwloc_topology_t topology __hwloc_attribute_unused, hwloc_thread_t thread, hwloc_cpuset_t set, int flags __hwloc_attribute_unused)
+hwloc_win__get_thread_cpubind(hwloc_thread_t thread, unsigned *group, DWORD_PTR *mask)
 {
   GROUP_AFFINITY aff;
 
@@ -482,7 +488,19 @@ hwloc_win_get_thread_cpubind(hwloc_topology_t topology __hwloc_attribute_unused,
 
   if (!GetThreadGroupAffinityProc(thread, &aff))
     return -1;
-  hwloc_bitmap_from_ith_ULONG_PTR(set, aff.Group, aff.Mask);
+  *group = aff.Group;
+  *mask = aff.Mask;
+  return 0;
+}
+
+static int
+hwloc_win_get_thread_cpubind(hwloc_topology_t topology __hwloc_attribute_unused, hwloc_thread_t thread, hwloc_cpuset_t set, int flags __hwloc_attribute_unused)
+{
+  DWORD_PTR mask;
+  unsigned group;
+  if (hwloc_win__get_thread_cpubind(thread, &group, &mask) < 0)
+    return -1;
+  hwloc_bitmap_from_ith_ULONG_PTR(set, group, mask);
   return 0;
 }
 
@@ -638,6 +656,59 @@ hwloc_win_get_thisproc_membind(hwloc_topology_t topology, hwloc_nodeset_t nodese
   return hwloc_win_get_proc_membind(topology, GetCurrentProcess(), nodeset, policy, flags);
 }
 
+
+/***************************
+ * saving_restoring binding
+ */
+
+struct hwloc_win_binding_private_data {
+  unsigned group; /* the current processor group */
+  DWORD_PTR thread_mask; /* the current thread mask inside the processor group */
+  DWORD_PTR process_mask; /* the current process mask inside the processor group */
+};
+
+static int
+hwloc_win_save_binding(hwloc_topology_t topology __hwloc_attribute_unused, void **private_data_p)
+{
+  struct hwloc_win_binding_private_data *pd;
+  DWORD_PTR sys_mask;
+
+  pd = malloc(sizeof(*pd));
+  if (!pd)
+    return -1;
+
+  /* save current process binding */
+  if (!GetProcessAffinityMask(GetCurrentProcess(), &pd->process_mask, &sys_mask)) {
+    free(pd);
+    return -1;
+  }
+
+  /* save current thread binding */
+  if (hwloc_win__get_thread_cpubind(GetCurrentThread(), &pd->group, &pd->thread_mask) < 0) {
+    free(pd);
+    return -1;
+  }
+
+  *private_data_p = pd;
+  return 0;
+}
+
+static int
+hwloc_win_restore_binding(hwloc_topology_t topology __hwloc_attribute_unused, void *private_data_p)
+{
+  struct hwloc_win_binding_private_data *pd = private_data_p;
+  int err;
+
+  /* restore current thread binding first, so that the process moves to the right processor group */
+  err = hwloc_win__set_thread_cpubind(GetCurrentThread(), pd->group, pd->thread_mask);
+
+  /* now restore the process binding inside that processor group */
+  if (!SetProcessAffinityMask(GetCurrentProcess(), pd->process_mask))
+    err = -1;
+
+  free(pd);
+  return err;
+}
 
 /************************
  * membind alloc/free
@@ -1187,6 +1258,10 @@ hwloc_set_windows_hooks(struct hwloc_binding_hooks *hooks,
     hooks->get_thread_cpubind = hwloc_win_get_thread_cpubind;
     hooks->get_thisthread_cpubind = hwloc_win_get_thisthread_cpubind;
     hooks->get_thisthread_membind = hwloc_win_get_thisthread_membind;
+  }
+  if (GetThreadGroupAffinityProc && (nr_processor_groups == 1 || SetThreadGroupAffinityProc)) {
+    hooks->save_binding = hwloc_win_save_binding;
+    hooks->restore_binding = hwloc_win_restore_binding;
   }
 
   if (VirtualAllocExNumaProc) {
