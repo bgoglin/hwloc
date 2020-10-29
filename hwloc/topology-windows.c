@@ -709,12 +709,20 @@ hwloc_win_restore_binding(hwloc_topology_t topology __hwloc_attribute_unused, vo
     printf("[x86] hwloc_win__set_thread_cpubind() failed %d\n", (unsigned) error);
   }
 
+  /* set the same thread affinity but force the process into that processor_group */
+  if (!SetThreadAffinityMask(GetCurrentThread(), pd->thread_mask))
+  {
+    DWORD error = GetLastError();
+    err = -1;
+    printf("[x86] SetthreadAffinityMask() failed %d\n", (unsigned) error);
+  }
+
   /* now restore the process binding inside that processor group */
   if (!SetProcessAffinityMask(GetCurrentProcess(), pd->process_mask))
   {
     DWORD error = GetLastError();
     err = -1;
-    printf("[x86] hwloc_win__set_thread_cpubind() failed %d\n", (unsigned) error);
+    printf("[x86] SetProcessAffinityMask() failed %d\n", (unsigned) error);
   }
 
   free(pd);
