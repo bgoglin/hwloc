@@ -268,6 +268,7 @@ static void hwloc_win_get_function_ptrs(void)
 
     if (GetActiveProcessorGroupCountProc)
       nr_processor_groups = GetActiveProcessorGroupCountProc();
+printf("[windows] found %lu processor groups\n", nr_processor_groups);
 
     if (!QueryWorkingSetExProc) {
       HMODULE psapi = LoadLibrary("psapi.dll");
@@ -688,6 +689,8 @@ hwloc_win_save_binding(hwloc_topology_t topology __hwloc_attribute_unused, void 
     free(pd);
     return -1;
   }
+  printf("[x86] saved thread binding group %u mask %llu and process mask %llu\n",
+         pd->group, (unsigned long long) pd->thread_mask, (unsigned long long) pd->process_mask);
 
   *private_data_p = pd;
   return 0;
@@ -707,6 +710,17 @@ hwloc_win_restore_binding(hwloc_topology_t topology __hwloc_attribute_unused, vo
     err = -1;
 
   free(pd);
+  printf("[x86] restored binding\n");
+  {
+    unsigned group = -1;
+    DWORD_PTR thread_mask = 0;
+    DWORD_PTR process_mask = 0;
+    DWORD_PTR sys_mask;
+    GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &sys_mask);
+    hwloc_win__get_thread_cpubind(GetCurrentThread(), &group, &thread_mask);
+    printf("[x86] binding is now thread binding group %u mask %llu and process mask %llu\n",
+           group, (unsigned long long) thread_mask, (unsigned long long) process_mask);
+  }
   return err;
 }
 
