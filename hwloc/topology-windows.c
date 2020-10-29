@@ -689,7 +689,7 @@ hwloc_win_save_binding(hwloc_topology_t topology __hwloc_attribute_unused, void 
     free(pd);
     return -1;
   }
-  printf("[x86] saved thread binding group %u mask %llu and process mask %llu\n",
+  printf("[x86] saved thread binding group %u mask %llx and process mask %llx\n",
          pd->group, (unsigned long long) pd->thread_mask, (unsigned long long) pd->process_mask);
 
   *private_data_p = pd;
@@ -704,10 +704,18 @@ hwloc_win_restore_binding(hwloc_topology_t topology __hwloc_attribute_unused, vo
 
   /* restore current thread binding first, so that the process moves to the right processor group */
   err = hwloc_win__set_thread_cpubind(GetCurrentThread(), pd->group, pd->thread_mask);
+  if (err < 0) {
+    DWORD error = GetLastError();
+    printf("[x86] hwloc_win__set_thread_cpubind() failed %d\n", (unsigned) error);
+  }
 
   /* now restore the process binding inside that processor group */
   if (!SetProcessAffinityMask(GetCurrentProcess(), pd->process_mask))
+  {
+    DWORD error = GetLastError();
     err = -1;
+    printf("[x86] hwloc_win__set_thread_cpubind() failed %d\n", (unsigned) error);
+  }
 
   free(pd);
   printf("[x86] restored binding\n");
@@ -718,7 +726,7 @@ hwloc_win_restore_binding(hwloc_topology_t topology __hwloc_attribute_unused, vo
     DWORD_PTR sys_mask;
     GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &sys_mask);
     hwloc_win__get_thread_cpubind(GetCurrentThread(), &group, &thread_mask);
-    printf("[x86] binding is now thread binding group %u mask %llu and process mask %llu\n",
+    printf("[x86] binding is now thread binding group %u mask %llx and process mask %llx\n",
            group, (unsigned long long) thread_mask, (unsigned long long) process_mask);
   }
   return err;
