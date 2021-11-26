@@ -45,6 +45,92 @@ hwloc__levelzero_cqprops_get(zes_device_handle_t h,
   }
 }
 
+static void
+hwloc__levelzero_memory_get(zes_device_handle_t h,
+                            hwloc_obj_t root_osdev,
+                            unsigned nr_osdevs, hwloc_obj_t *sub_osdevs)
+{
+  zes_mem_handle_t *mh;
+  uint32_t nr_mems;
+  ze_result_t res;
+  unsigned long long totalHBMkB = 0;
+  unsigned long long totalDRAMkB = 0;
+
+  res = zesDeviceEnumMemoryModules(h, &nr_mems, NULL);
+  if (res != ZE_RESULT_SUCCESS || !nr_mems)
+    return;
+
+  mh = malloc(nr_mems * sizeof(*mh));
+  if (mh) {
+    res = zesDeviceEnumMemoryModules(h, &nr_mems, mh);
+    if (res == ZE_RESULT_SUCCESS) {
+      unsigned m;
+      for(m=0; m<nr_mems; m++) {
+        zes_mem_properties_t mprop;
+        res = zesMemoryGetProperties(mh[m], &mprop);
+        if (res == ZE_RESULT_SUCCESS) {
+          const char *type;
+          hwloc_obj_t osdev;
+          char name[64], value[64];
+          if (mprop.onSubdevice) {
+            if (mprop.subdeviceId >= nr_osdevs || !nr_osdevs || !sub_osdevs) {
+              if (!hwloc_hide_errors())
+                fprintf(stderr, "LevelZero: Ignoring memory on unexpected subdeviceId #%u\n", mprop.subdeviceId);
+              osdev = NULL; /* we'll ignore it but we'll still agregate its subdevice memories into totalHBM/DRAMkB */
+            } else {
+              osdev = sub_osdevs[mprop.subdeviceId];
+            }
+          } else {
+            osdev = root_osdev;
+          }
+          switch (mprop.type) {
+          case ZES_MEM_TYPE_HBM:
+            type = "HBM";
+            totalHBMkB += mprop.physicalSize >> 10;
+            break;
+          case ZES_MEM_TYPE_DDR:
+          case ZES_MEM_TYPE_DDR3:
+          case ZES_MEM_TYPE_DDR4:
+          case ZES_MEM_TYPE_DDR5:
+          case ZES_MEM_TYPE_LPDDR:
+          case ZES_MEM_TYPE_LPDDR3:
+          case ZES_MEM_TYPE_LPDDR4:
+          case ZES_MEM_TYPE_LPDDR5:
+            type = "DRAM";
+            totalDRAMkB += mprop.physicalSize >> 10;
+            break;
+          default:
+            type = NULL;
+          }
+
+          if (!osdev || !type || !mprop.physicalSize)
+            continue;
+
+          if (osdev != root_osdev) {
+            /* set the subdevice memory immediately */
+            snprintf(name, sizeof(name), "LevelZero%sSize", type);
+            snprintf(value, sizeof(value), "%llu", (unsigned long long) mprop.physicalSize >> 10);
+            hwloc_obj_add_info(osdev, name, value);
+          }
+        }
+      }
+    }
+    free(mh);
+  }
+
+  /* set the root device memory at the end, once subdevice memories were agregated */
+  if (totalHBMkB) {
+    char value[64];
+    snprintf(value, sizeof(value), "%llu", totalHBMkB);
+    hwloc_obj_add_info(root_osdev, "LevelZeroHBMSize", value);
+  }
+  if (totalDRAMkB) {
+    char value[64];
+    snprintf(value, sizeof(value), "%llu", totalDRAMkB);
+    hwloc_obj_add_info(root_osdev, "LevelZeroDRAMSize", value);
+  }
+}
+
 static int
 hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status *dstatus)
 {
@@ -190,6 +276,9 @@ hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status
             hwloc_obj_add_info(subosdevs[k], "Backend", "LevelZero");
 
             hwloc__levelzero_cqprops_get(subh[k], subosdevs[k]);
+            /* no need to call hwloc__levelzero_memory_get() on subdevices,
+             * they return everything just like the root device.
+             */
           }
         } else {
           free(subosdevs);
@@ -198,6 +287,8 @@ hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status
         }
         free(subh);
       }
+
+      hwloc__levelzero_memory_get(dvh[j], osdev, nr_subdevices, subosdevs);
 
       parent = NULL;
       res = zesDevicePciGetProperties(sdvh, &pci);

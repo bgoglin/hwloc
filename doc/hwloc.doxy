@@ -1985,6 +1985,11 @@ and SectorSize (in bytes).
 <dd>The index of the Level Zero driver within the list of drivers,
  and the index of the device within the list of devices managed by this driver.
 </dd>
+<dt>LevelZeroHBMSize, LevelZeroDRAMSize (LevelZero OS devices/subdevices)</dt>
+<dd>The amount of HBM or DRAM memory (in kB) of a LevelZero device or subdevice.
+ For devices that contain subdevices, the amount reported in the root device
+ includes the memories of all its subdevices.
+</dd>
 <dt>LevelZeroCQGroups, LevelZeroCQGroup2 (LevelZero OS devices/subdevices)</dt>
 <dd>The number of completion queue groups, and the description of the third group
 (as <tt>N*0xX</tt> where <tt>N</tt> is the number of queues in the group,
