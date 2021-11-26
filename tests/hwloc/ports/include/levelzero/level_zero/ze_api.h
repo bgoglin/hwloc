@@ -23,5 +23,6 @@ typedef struct ze_command_queue_group_properties {
 
 extern ze_result_t zeDeviceGetCommandQueueGroupProperties(ze_driver_handle_t, uint32_t *, ze_command_queue_group_properties_t *);
 
+extern ze_result_t zeDeviceGetSubDevices(ze_device_handle_t, uint32_t *, ze_device_handle_t*);
 
 #endif /* HWLOC_PORT_L0_ZE_API_H */
