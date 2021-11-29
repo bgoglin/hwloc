@@ -374,6 +374,7 @@ hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status
   uint32_t nbdrivers, i, k, zeidx;
   struct hwloc_osdev_array oarray;
   struct hwloc_levelzero_ports hports;
+  char *fabric_env = getenv("HWLOC_L0_FABRIC");
   int sysman_maybe_missing = 0; /* 1 if ZES_ENABLE_SYSMAN=1 was NOT set early, 2 if ZES_ENABLE_SYSMAN=0 */
   char *env;
 
@@ -531,7 +532,8 @@ hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status
 
       hwloc__levelzero_memory_get(dvh[j], osdev, nr_subdevices, subosdevs);
 
-      hwloc__levelzero_ports_get(dvh[j], osdev, nr_subdevices, subosdevs, &hports);
+      if (fabric_env)
+        hwloc__levelzero_ports_get(dvh[j], osdev, nr_subdevices, subosdevs, &hports);
 
       parent = NULL;
       res = zesDevicePciGetProperties(sdvh, &pci);
@@ -563,6 +565,26 @@ hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status
     }
 
     free(dvh);
+  }
+
+  if (hports.nr > 12 && !strcmp(fabric_env, "fake")) {
+    /* connect two links */
+    hports.ports[1].state.status = ZES_FABRIC_PORT_STATUS_HEALTHY;
+    hports.ports[1].state.rxSpeed = hports.ports[1].props.maxRxSpeed;
+    hports.ports[1].state.txSpeed = hports.ports[1].props.maxTxSpeed;
+    hports.ports[1].state.remotePortId = hports.ports[10].props.portId;
+    hports.ports[10].state.status = ZES_FABRIC_PORT_STATUS_HEALTHY;
+    hports.ports[10].state.rxSpeed = hports.ports[10].props.maxRxSpeed;
+    hports.ports[10].state.txSpeed = hports.ports[10].props.maxTxSpeed;
+    hports.ports[10].state.remotePortId = hports.ports[1].props.portId;
+    hports.ports[2].state.status = ZES_FABRIC_PORT_STATUS_HEALTHY;
+    hports.ports[2].state.rxSpeed = hports.ports[2].props.maxRxSpeed;
+    hports.ports[2].state.txSpeed = hports.ports[2].props.maxTxSpeed;
+    hports.ports[2].state.remotePortId = hports.ports[12].props.portId;
+    hports.ports[12].state.status = ZES_FABRIC_PORT_STATUS_HEALTHY;
+    hports.ports[12].state.rxSpeed = hports.ports[12].props.maxRxSpeed;
+    hports.ports[12].state.txSpeed = hports.ports[12].props.maxTxSpeed;
+    hports.ports[12].state.remotePortId = hports.ports[2].props.portId;
   }
 
   hwloc__levelzero_ports_connect(topology, &oarray, &hports);
