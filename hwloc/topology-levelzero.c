@@ -14,6 +14,53 @@
 #include <level_zero/ze_api.h>
 #include <level_zero/zes_api.h>
 
+struct hwloc_osdev_array {
+  unsigned nr, nr_allocated;
+  hwloc_obj_t *objs;
+};
+
+static void
+hwloc__levelzero_osdev_array_init(struct hwloc_osdev_array *array)
+{
+  array->nr = 0;
+  array->nr_allocated = 0;
+  array->objs = NULL;
+}
+
+static int
+hwloc__levelzero_osdev_array_add(struct hwloc_osdev_array *array,
+                                 hwloc_obj_t new)
+{
+  if (array->nr_allocated == array->nr) {
+    unsigned new_nr_allocated = array->nr_allocated + 40; /* enough for 8 devices + 4 subdevices each on first allocation */
+    hwloc_obj_t *tmp = realloc(array->objs, new_nr_allocated * sizeof(*array->objs));
+    if (!tmp)
+      /* the object won't be added */
+      return -1;
+    array->nr_allocated = new_nr_allocated;
+    array->objs = tmp;
+  }
+  array->objs[array->nr++] = new;
+  return 0;
+}
+
+static void
+hwloc__levelzero_osdev_array_free(struct hwloc_osdev_array *array)
+{
+  free(array->objs);
+}
+
+static int
+hwloc__levelzero_osdev_array_find(struct hwloc_osdev_array *array,
+                                  hwloc_obj_t osdev)
+{
+  unsigned i;
+  for(i=0; i<array->nr; i++)
+    if (array->objs[i] == osdev)
+      return (int)i;
+  return -1;
+}
+
 static void
 hwloc__levelzero_cqprops_get(zes_device_handle_t h,
                              hwloc_obj_t osdev)
@@ -131,6 +178,186 @@ hwloc__levelzero_memory_get(zes_device_handle_t h,
   }
 }
 
+struct hwloc_levelzero_ports {
+  unsigned nr_allocated;
+  unsigned nr;
+  struct hwloc_levelzero_port {
+    hwloc_obj_t osdev;
+    zes_fabric_port_properties_t props;
+    zes_fabric_port_state_t state;
+  } *ports;
+};
+
+static void
+hwloc__levelzero_ports_init(struct hwloc_levelzero_ports *hports)
+{
+  hports->nr_allocated = 0;
+  hports->nr = 0;
+  hports->ports = NULL;
+
+  free(hports->ports);
+}
+
+static void
+hwloc__levelzero_ports_get(zes_device_handle_t dvh,
+                          hwloc_obj_t root_osdev,
+                           unsigned nr_sub_osdevs, hwloc_obj_t *sub_osdevs,
+                           struct hwloc_levelzero_ports *hports)
+{
+  zes_fabric_port_handle_t *ports;
+  uint32_t nr_new;
+  unsigned i;
+  ze_result_t res;
+
+  res = zesDeviceEnumFabricPorts(dvh, &nr_new, NULL);
+  if (res != ZE_RESULT_SUCCESS || !nr_new)
+    return;
+
+  if (hports->nr_allocated - hports->nr < nr_new) {
+    /* we must extend the array */
+    struct hwloc_levelzero_port *tmp;
+    uint32_t new_nr_allocated;
+    /* Extend the array by 8x the number of ports in this device.
+     * This should mean a single allocation per 8 devices.
+     */
+    new_nr_allocated = hports->nr_allocated + 8*nr_new;
+    tmp = realloc(hports->ports, new_nr_allocated * sizeof(*hports->ports));
+    if (!tmp)
+      return;
+    hports->ports = tmp;
+    hports->nr_allocated = new_nr_allocated;
+  }
+
+  ports = malloc(nr_new * sizeof(*ports));
+  if (!ports)
+    return;
+  res = zesDeviceEnumFabricPorts(dvh, &nr_new, ports);
+
+  for(i=0; i<nr_new; i++) {
+    unsigned id = hports->nr;
+    res = zesFabricPortGetProperties(ports[i], &hports->ports[id].props);
+    if (res != ZE_RESULT_SUCCESS)
+      continue;
+    res = zesFabricPortGetState(ports[i], &hports->ports[id].state);
+    // returns UNKNOWN_ERROR when state is not healthy?
+    // if (res != ZE_RESULT_SUCCESS)
+    //   continue;
+    if (hports->ports[id].props.onSubdevice) {
+      if (hports->ports[id].props.subdeviceId < nr_sub_osdevs)
+        hports->ports[id].osdev = sub_osdevs[hports->ports[id].props.subdeviceId];
+      else
+        continue;
+    } else {
+      hports->ports[id].osdev = root_osdev;
+    }
+    hports->nr++;
+  }
+
+  free(ports);
+}
+
+static int
+hwloc__levelzero_ports_add_xelink_bandwidth(struct hwloc_topology *topology,
+                                            struct hwloc_osdev_array *oarray,
+                                            hwloc_uint64_t *bws)
+{
+  void *handle;
+  int err;
+
+  handle = hwloc_backend_distances_add_create(topology, "XeLinkBandwidth",
+                                              HWLOC_DISTANCES_KIND_FROM_OS|HWLOC_DISTANCES_KIND_MEANS_BANDWIDTH,
+                                              0);
+  if (!handle)
+    goto out;
+
+  err = hwloc_backend_distances_add_values(topology, handle, oarray->nr, oarray->objs, bws, 0);
+  if (err < 0)
+    goto out;
+  /* arrays are now attached to the handle */
+  oarray->objs = NULL;
+  bws = NULL;
+
+  err = hwloc_backend_distances_add_commit(topology, handle, 0 /* don't group GPUs */);
+  if (err < 0)
+    goto out;
+
+  return 0;
+
+ out:
+  free(bws);
+  return -1;
+}
+
+static int
+hwloc__levelzero_ports_connect(struct hwloc_topology *topology,
+                               struct hwloc_osdev_array *oarray,
+                               struct hwloc_levelzero_ports *hports)
+{
+  hwloc_uint64_t *bws;
+  unsigned i, j;
+  int gotbw = 0;
+
+  if (!hports->nr)
+    return 0;
+
+  bws = calloc(oarray->nr * oarray->nr, sizeof(*bws));
+  if (!bws)
+    return -1;
+
+  for(i=0; i<hports->nr; i++) {
+    if (hports->ports[i].state.status == ZES_FABRIC_PORT_STATUS_HEALTHY) {
+      for(j=0; j<hports->nr; j++) {
+        if (i==j)
+          continue;
+        if (hports->ports[i].state.remotePortId.fabricId == hports->ports[j].props.portId.fabricId
+            && hports->ports[i].state.remotePortId.attachId == hports->ports[j].props.portId.attachId
+            && hports->ports[i].state.remotePortId.portNumber == hports->ports[j].props.portId.portNumber) {
+          int iindex, jindex;
+          printf("found link model %s with %llu bit/s TX from port #u (%u-%u-%u osdev %p) to port #u (%u-%u-%u osdev %p)\n",
+                      hports->ports[j].props.model,
+                      (unsigned long long) hports->ports[i].state.rxSpeed.bitRate,
+                      hports->ports[i].state.remotePortId.fabricId,
+                      hports->ports[i].state.remotePortId.attachId,
+                      hports->ports[i].state.remotePortId.portNumber,
+                      hports->ports[i].osdev,
+                      hports->ports[j].state.remotePortId.fabricId,
+                      hports->ports[j].state.remotePortId.attachId,
+                      hports->ports[j].state.remotePortId.portNumber,
+                      hports->ports[j].osdev);
+          /* only keep XeLink for now */
+          if (strcmp(hports->ports[j].props.model, "XeLink"))
+            continue;
+          iindex = hwloc__levelzero_osdev_array_find(oarray, hports->ports[i].osdev);
+          jindex = hwloc__levelzero_osdev_array_find(oarray, hports->ports[j].osdev);
+          if (iindex<0 || jindex<0)
+            continue;
+          bws[iindex*oarray->nr+jindex] += hports->ports[i].state.rxSpeed.bitRate >> 20; /* MB/s */
+          // TODO: way to accumulate subdevs bw into rootdevs? tranformation? different matrix?
+          gotbw++;
+        }
+      }
+    }
+  }
+  if (!gotbw) {
+    free(bws);
+    return 0;
+  }
+
+  for(i=0; i<oarray->nr; i++)
+    /* add very high artifical values on the diagonal since local is faster than remote.
+     * use 1TB/s for local, it somehow matches the HBM.
+     */
+    bws[i*oarray->nr+i] = 1000000;
+
+  return hwloc__levelzero_ports_add_xelink_bandwidth(topology, oarray, bws);
+}
+
+static void
+hwloc__levelzero_ports_destroy(struct hwloc_levelzero_ports *hports)
+{
+  free(hports->ports);
+}
+
 static int
 hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status *dstatus)
 {
@@ -145,8 +372,14 @@ hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status
   ze_result_t res;
   ze_driver_handle_t *drh;
   uint32_t nbdrivers, i, k, zeidx;
+  struct hwloc_osdev_array oarray;
+  struct hwloc_levelzero_ports hports;
   int sysman_maybe_missing = 0; /* 1 if ZES_ENABLE_SYSMAN=1 was NOT set early, 2 if ZES_ENABLE_SYSMAN=0 */
   char *env;
+
+  hwloc__levelzero_osdev_array_init(&oarray);
+
+  hwloc__levelzero_ports_init(&hports);
 
   assert(dstatus->phase == HWLOC_DISC_PHASE_IO);
 
@@ -298,6 +531,8 @@ hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status
 
       hwloc__levelzero_memory_get(dvh[j], osdev, nr_subdevices, subosdevs);
 
+      hwloc__levelzero_ports_get(dvh[j], osdev, nr_subdevices, subosdevs, &hports);
+
       parent = NULL;
       res = zesDevicePciGetProperties(sdvh, &pci);
       if (res == ZE_RESULT_SUCCESS) {
@@ -315,10 +550,13 @@ hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status
         parent = hwloc_get_root_obj(topology);
 
       hwloc_insert_object_by_parent(topology, parent, osdev);
+      hwloc__levelzero_osdev_array_add(&oarray, osdev);
       if (nr_subdevices) {
         for(k=0; k<nr_subdevices; k++)
-          if (subosdevs[k])
+          if (subosdevs[k]) {
             hwloc_insert_object_by_parent(topology, osdev, subosdevs[k]);
+            hwloc__levelzero_osdev_array_add(&oarray, subosdevs[k]);
+          }
         free(subosdevs);
       }
       zeidx++;
@@ -326,6 +564,11 @@ hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status
 
     free(dvh);
   }
+
+  hwloc__levelzero_ports_connect(topology, &oarray, &hports);
+  hwloc__levelzero_ports_destroy(&hports);
+
+  hwloc__levelzero_osdev_array_free(&oarray);
 
   free(drh);
   return 0;
