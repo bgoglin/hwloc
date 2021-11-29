@@ -208,6 +208,14 @@ hwloc_levelzero_discover(struct hwloc_backend *backend, struct hwloc_disc_status
       continue;
     }
 
+#if 0
+    /* No interesting info attr to get from driver properties for now.
+     * Driver UUID is process-specific, it won't help much.
+     */
+    ze_driver_properties_t drprop;
+    res = zeDriverGetProperties(drh[i], &drprop);
+#endif
+
     for(j=0; j<nbdevices; j++) {
       zes_device_properties_t prop;
       zes_pci_properties_t pci;
