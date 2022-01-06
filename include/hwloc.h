@@ -2068,6 +2068,12 @@ enum hwloc_topology_flags_e {
    */
   HWLOC_TOPOLOGY_FLAG_NO_DISTANCES = (1UL<<7),
 
+  /** \brief Ignore memory attributes.
+   *
+   * Ignore memory attribues from the operating systems (and from XML).
+   */
+  HWLOC_TOPOLOGY_FLAG_NO_MEMATTRS = (1UL<<8),
+
   /** \brief Ignore CPU Kinds.
    *
    * Ignore CPU kind information from the operating systems (and from XML).
