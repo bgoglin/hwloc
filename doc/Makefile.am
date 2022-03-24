@@ -1,4 +1,4 @@
-# Copyright © 2009-2021 Inria.  All rights reserved.
+# Copyright © 2009-2022 Inria.  All rights reserved.
 # Copyright © 2009-2013, 2021 Université Bordeaux
 # Copyright © 2009-2016 Cisco Systems, Inc.  All rights reserved.
 # See COPYING in top-level directory.
@@ -14,7 +14,7 @@ DOX_MAN_DIR = $(DOX_DIR)/man
 DOX_LATEX_DIR = $(DOX_DIR)/latex
 DOX_A4PDF = doxygen-doc/$(PACKAGE)-a4.pdf
 DOX_LETTERPDF = doxygen-doc/$(PACKAGE)-letter.pdf
-DOX_HTML_README = $(DOX_HTML_DIR)/readme.tmp.html
+DOX_HTML_TMP_README = $(DOX_HTML_DIR)/readme.tmp.html
 DOX_TAG = $(DOX_DIR)/$(PACKAGE).tag
 
 #
@@ -908,7 +908,7 @@ MAINTAINERCLEANFILES = $(DOX_TAG) \
     $(DOX_LATEX_DIR) \
     $(DOX_A4PDF) \
     $(DOX_LETTERPDF) \
-    $(DOX_HTML_README)
+    $(DOX_HTML_TMP_README)
 
 if HWLOC_BUILD_README
 
@@ -921,10 +921,14 @@ if HWLOC_BUILD_README
 # Just like BUILD_DOXYGEN, BUILD_README will automatically be false if
 # we're not building standalone.
 #
+# mkdir $(DOX_HTML_DIR) in the builddir in case the doxygen output
+# is taken from srcdir (see #526).
+#
 readme: $(HWLOC_top_srcdir)/README
-$(HWLOC_top_srcdir)/README: $(DOX_TAG)
-	sed -n -f $(srcdir)/README.sed $(DOX_HTML_DIR)/index.html > $(DOX_HTML_README)
-	LC_ALL=C $(HWLOC_W3_GENERATOR) $(DOX_HTML_README) \
+$(HWLOC_top_srcdir)/README: $(DOX_HTML_DIR)/index.html $(DOX_TAG)
+	$(MKDIR_P) $(DOX_HTML_DIR)
+	sed -n -f $(srcdir)/README.sed $< > $(DOX_HTML_TMP_README)
+	LC_ALL=C $(HWLOC_W3_GENERATOR) $(DOX_HTML_TMP_README) \
 	 | $(SED) -n -e 's/^   //' -e '/^Introduction$$/,$$p' \
 	 | $(SED) -e '/^--*-$$/,$$ d' \
 	 > $@
