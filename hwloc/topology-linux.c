@@ -3848,6 +3848,71 @@ annotate_sysfsnode(struct hwloc_topology *topology,
   return 0;
 }
 
+static int nd_region_is_nvdimm(unsigned ndctl, unsigned region, int fsroot_fd)
+{
+  unsigned mapping;
+  char path[SYSFS_NUMA_NODE_PATH_LEN];
+  int is_nvdimm = -1; /* don't know */
+
+  /* iterate over the region mappings to find the corresponding nmems */
+
+  /* check if that nmems to check if they are nvdimm */
+  for(mapping=0; ; mapping++) {
+    char mappingstring[16];
+    unsigned nmem;
+    snprintf(path, sizeof(path), "/sys/class/nd/ndctl%u/device/region%u/mapping%u", ndctl, region, mapping);
+    if (hwloc_read_path_by_length(path, mappingstring, sizeof(mappingstring), fsroot_fd) < 0)
+      /* this mapping doesn't exist */
+      break;
+    hwloc_debug("ndctl%u region%u mapping%u is %s\n", ndctl, region, mapping, mappingstring);
+
+    if (sscanf(mappingstring, "nmem%u,", &nmem) == 1) {
+      char devtype[16];
+      snprintf(path, sizeof(path), "/sys/class/nd/ndctl%u/device/nmem%u/devtype", ndctl, nmem);
+      if (hwloc_read_path_by_length(path, devtype, sizeof(devtype), fsroot_fd) > 0) {
+        hwloc_debug("ndctl%u nmem%u devtype is %s\n", ndctl, nmem, devtype);
+        if (!strncmp(devtype, "nvdimm", 6)) {
+          if (is_nvdimm == -1)
+            is_nvdimm = 1;
+        } else {
+          is_nvdimm = 0;
+        }
+      }
+    }
+  }
+
+  return is_nvdimm == 1 ? 1 : 0;
+}
+
+static int dax_is_nvdimm(char *daxname, int fsroot_fd)
+{
+  unsigned ndctl, region;
+  char path[SYSFS_NUMA_NODE_PATH_LEN+255];
+  for(ndctl=0; ; ndctl++) {
+    snprintf(path, sizeof(path), "/sys/class/nd/ndctl%u", ndctl);
+    if (hwloc_access(path, X_OK, fsroot_fd) < 0)
+      /* this ndctl doesn't exist, usually there's only ndctl0 */
+      break;
+
+    for(region=0; ; region++) {
+      snprintf(path, sizeof(path), "/sys/class/nd/ndctl%u/device/region%u", ndctl, region);
+      if (hwloc_access(path, X_OK, fsroot_fd) < 0)
+        /* this region doesn't exist, usually there are 1 or 2 per ndctl */
+        break;
+
+      snprintf(path, sizeof(path), "/sys/class/nd/ndctl%u/device/region%u/%s", ndctl, region, daxname);
+      if (hwloc_access(path, X_OK, fsroot_fd) < 0)
+        /* this dax doesn't come from this region */
+        continue;
+
+      hwloc_debug("device %s is in ndctl%u region%u\n", daxname, ndctl, region);
+      return nd_region_is_nvdimm(ndctl, region, fsroot_fd);
+    }
+  }
+
+  return 0;
+}
+
 static int
 look_sysfsnode(struct hwloc_topology *topology,
 	       struct hwloc_linux_backend_data_s *data,
@@ -3989,11 +4054,18 @@ look_sysfsnode(struct hwloc_topology *topology,
 	  osnode = (unsigned) -1;
 	  snprintf(daxpath, sizeof(daxpath), "/sys/bus/dax/devices/%s/target_node", dirent->d_name);
 	  if (!hwloc_read_path_as_int(daxpath, &tmp, data->root_fd)) { /* contains %d when added in 5.1 */
+            /* also try to check whether this dax is nvdimm-based */
+            int is_nvdimm;
 	    osnode = (unsigned) tmp;
+            hwloc_debug("device %s is NUMA node P%u\n", dirent->d_name, osnode);
+            is_nvdimm = dax_is_nvdimm(dirent->d_name, data->root_fd);
 	    for(i=0; i<nbnodes; i++) {
 	      hwloc_obj_t node = nodes[i];
-	      if (node && node->os_index == osnode)
+	      if (node && node->os_index == osnode) {
 		hwloc_obj_add_info(node, "DAXDevice", dirent->d_name);
+                if (is_nvdimm)
+                  node->subtype = strdup("NVDIMM");
+              }
 	    }
 	  }
 	}
