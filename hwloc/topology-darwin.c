@@ -899,6 +899,7 @@ hwloc_look_darwin(struct hwloc_backend *backend, struct hwloc_disc_status *dstat
 
   hwloc__add_info(&topology->infos, "Backend", "Darwin");
   hwloc_add_uname_info(topology, NULL);
+  hwloc_add_pagesize_info(topology);
   return 0;
 }
 

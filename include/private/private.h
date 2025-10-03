@@ -384,6 +384,9 @@ extern int hwloc_look_hardwired_fujitsu_fx100(struct hwloc_topology *topology);
  */
 extern void hwloc_add_uname_info(struct hwloc_topology *topology, void *cached_uname);
 
+/* Insert PageSizes topology info from legacy sysconf&co */
+extern void hwloc_add_pagesize_info(struct hwloc_topology *topology);
+
 /* Free obj and its attributes assuming it's not linked to a parent and doesn't have any child */
 extern void hwloc_free_unlinked_object(hwloc_obj_t obj);
 

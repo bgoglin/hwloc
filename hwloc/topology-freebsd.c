@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: BSD-3-Clause
  * Copyright © 2009 CNRS
- * Copyright © 2009-2024 Inria.  All rights reserved.
+ * Copyright © 2009-2025 Inria.  All rights reserved.
  * Copyright © 2009-2010, 2012, 2020 Université Bordeaux
  * Copyright © 2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -523,6 +523,55 @@ hwloc_look_freebsd_domains(struct hwloc_topology *topology){
 }
 #endif
 
+static void
+hwloc_freebsd_add_pagesize_info(struct hwloc_topology *topology)
+{
+  size_t len, buflen, i;
+  unsigned long *sizes;
+  char *buffer, *current;
+  ssize_t err;
+
+  if (sysctlbyname("hw.pagesizes", NULL, &len, NULL, 0) < 0 || !len)
+    return;
+  sizes = malloc(len);
+  if (!sizes)
+    goto fallback;
+  if (sysctlbyname("hw.pagesizes", sizes, &len, NULL, 0) < 0 || !len) {
+    free(sizes);
+    goto fallback;
+  }
+
+  /* sizes are unsigned long, ordered, maybe finished by 0 */
+  len = len / sizeof(*sizes);
+  buflen = 21*len;
+  buffer = malloc(buflen);
+  if (!buffer) {
+    free(sizes);
+    goto fallback;
+  }
+
+  current = buffer;
+  for(i=0; i<len; i++) {
+    if (!sizes[i])
+      break;
+    err = snprintf(current, buflen, "%s%lu", current != buffer ? "," : "", sizes[i]);
+    if (err < 0)
+      break;
+    current += err;
+    buflen -= err;
+  }
+
+  if (current != buffer)
+    hwloc__add_info(&topology->infos, "PageSizes", buffer);
+
+  free(buffer);
+  free(sizes);
+  return;
+
+ fallback:
+  hwloc_add_pagesize_info(topology);
+}
+
 static int
 hwloc_look_freebsd(struct hwloc_backend *backend, struct hwloc_disc_status *dstatus)
 {
@@ -558,6 +607,7 @@ hwloc_look_freebsd(struct hwloc_backend *backend, struct hwloc_disc_status *dsta
   if (data->need_global_infos) {
     hwloc__add_info(&topology->infos, "Backend", "FreeBSD");
     hwloc_add_uname_info(topology, NULL);
+    hwloc_freebsd_add_pagesize_info(topology);
     data->need_global_infos = 0;
   }
   return 0;

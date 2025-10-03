@@ -964,6 +964,21 @@ hwloc_win_efficiency_classes_destroy(struct hwloc_win_efficiency_classes *classe
  * discovery
  */
 
+static void
+hwloc_windows_add_pagesize_info(hwloc_topology_t topology,
+                                SYSTEM_INFO *SystemInfo)
+{
+  char buffer[42];
+  size_t pagesize = SystemInfo->dwPageSize;
+  size_t largepagesize = GetLargePageMinimum(); /* no way to find all sizes? */
+  if (largepagesize) {
+    snprintf(buffer, sizeof(buffer), "%lu,%lu", (unsigned long) pagesize, (unsigned long) largepagesize);
+  } else {
+    snprintf(buffer, sizeof(buffer), "%lu", (unsigned long) pagesize);
+  }
+  hwloc__add_info(&topology->infos, "PageSizes", buffer);
+}
+
 static int
 hwloc_look_windows(struct hwloc_backend *backend, struct hwloc_disc_status *dstatus)
 {
@@ -1276,6 +1291,7 @@ hwloc_look_windows(struct hwloc_backend *backend, struct hwloc_disc_status *dsta
   /* emulate uname instead of calling hwloc_add_uname_info() */
   hwloc__add_info(&topology->infos, "Backend", "Windows");
   hwloc__add_info(&topology->infos, "OSName", "Windows");
+  hwloc_windows_add_pagesize_info(topology, &SystemInfo);
 
 #if defined(__CYGWIN__)
   hwloc__add_info(&topology->infos, "WindowsBuildEnvironment", "Cygwin");

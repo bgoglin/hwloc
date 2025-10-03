@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: BSD-3-Clause
  * Copyright © 2009 CNRS
- * Copyright © 2009-2023 Inria.  All rights reserved.
+ * Copyright © 2009-2025 Inria.  All rights reserved.
  * Copyright © 2009-2010 Université Bordeaux
  * Copyright © 2009-2018 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -110,6 +110,34 @@ void hwloc_add_uname_info(struct hwloc_topology *topology __hwloc_attribute_unus
   if (*utsname->machine)
     hwloc__add_info(&topology->infos, "Architecture", utsname->machine);
 #endif /* HAVE_UNAME */
+}
+
+void hwloc_add_pagesize_info(struct hwloc_topology *topology)
+{
+  int err;
+  char buffer[42];
+  long pagesize;
+  long largepagesize = -1; /* not found */
+
+  if (hwloc_get_info_by_name(&topology->infos, "PageSizes"))
+    /* don't annotate twice */
+    return;
+
+  pagesize = hwloc_getpagesize();
+  largepagesize = -1; /* not found */
+#if HAVE_DECL__SC_LARGE_PAGESIZE
+  largepagesize = sysconf(_SC_LARGE_PAGESIZE);
+#endif
+  if (largepagesize == -1)
+    err = snprintf(buffer, sizeof(buffer), "%ld", pagesize);
+  else
+    err = snprintf(buffer, sizeof(buffer), "%ld,%ld", pagesize, largepagesize);
+  if (err < 0)
+    return;
+  hwloc__add_info(&topology->infos, "PageSizes", buffer);
+  printf("###################\n");
+  printf("#### FALLBACK #####\n");
+  printf("###################\n");
 }
 
 char *

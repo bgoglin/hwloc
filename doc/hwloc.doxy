@@ -2027,6 +2027,11 @@ placed.
 These info attributes are attached to the topology itself.
 
 <dl>
+<dt>PageSizes</dt>
+<dd>The sizes of pages, huge pages and/or large pages supported
+by the machine, in bytes.
+Values are in ascending order, separated by commas.
+</dd>
 <dt>MemoryTiersNr</dt>
 <dd>The number of different memory tiers in the topology, if any.
 See \ref heteromem.
@@ -4910,6 +4915,16 @@ else /* 3.x exporter with 3.x importer */
 \endverbatim
 
 Note that hwloc v3.x can neither import from nor export to hwloc 1.x.
+
+
+\section upgrade_to_api_3x_pagetypes Removal of page types
+
+The page type array in NUMA node was removed because it was either
+not filled with actual number of pages, or meaningless because
+those numbers could vary dynamically.
+
+It is replaced with the <tt>PageSizes</tt> topology info which
+just lists the supported page sizes.
 
 
 \section upgrade_to_api_3x_deprecations API Deprecations
