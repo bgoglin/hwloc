@@ -120,6 +120,10 @@ struct hwloc_topology {
     int (*set_thread_cpubind)(hwloc_topology_t topology, hwloc_thread_t tid, hwloc_const_cpuset_t set, int flags);
     int (*get_thread_cpubind)(hwloc_topology_t topology, hwloc_thread_t tid, hwloc_cpuset_t set, int flags);
 #endif
+    /* x86 specific CPU binding that may only bind to a single PU or nothing.
+     * Prototypes must match get/set_thisthread_cpubind() */
+    int (*x86_save_cpubind)(hwloc_topology_t topology, hwloc_cpuset_t set, int flags);
+    int (*x86_restore_cpubind)(hwloc_topology_t topology, hwloc_const_cpuset_t set, int flags);
 
     int (*get_thisproc_last_cpu_location)(hwloc_topology_t topology, hwloc_cpuset_t set, int flags);
     int (*get_thisthread_last_cpu_location)(hwloc_topology_t topology, hwloc_cpuset_t set, int flags);
