@@ -33,6 +33,42 @@
 #  include <sys/lgrp_user.h>
 #endif
 
+/* Minimalistic binding API for the x86 backend which only binds to a single thread (or to nothing).
+ * Either a single bit and we bind, or a full cpuset for not bound.
+ *
+ * processor_bind() has no impact to lgrp affinities, hence no need to save/restore that.
+ * And we don't use NUMA node cpusets anymore, which aren't available during early discovery.
+ *
+ * topology and flags are only here to match the prototypes of the main API.
+ */
+static int
+hwloc_solaris_x86_get_cpubind(hwloc_topology_t topology __hwloc_attribute_unused, hwloc_bitmap_t hwloc_set, int flags __hwloc_attribute_unused)
+{
+  processorid_t old;
+  if (processor_bind(P_LWPID, P_MYID, PBIND_QUERY, &old) < 0)
+    return -1;
+  if (old == PBIND_NONE)
+    hwloc_bitmap_fill(hwloc_set);
+  else
+    hwloc_bitmap_only(hwloc_set, old);
+  return 0;
+}
+
+static int
+hwloc_solaris_x86_set_cpubind(hwloc_topology_t topology __hwloc_attribute_unused, hwloc_const_bitmap_t hwloc_set, int flags __hwloc_attribute_unused)
+{
+  if (hwloc_bitmap_weight(hwloc_set) == 1) {
+    int first = hwloc_bitmap_first(hwloc_set);
+    return processor_bind(P_LWPID, P_MYID, first, NULL);
+  } else {
+    return processor_bind(P_LWPID, P_MYID, PBIND_NONE, NULL);
+  }
+}
+
+/* The following general purpose hooks work fine after loading the topology
+ * (they need NUMA nodes for lgrp affinity management.
+ */
+
 static int
 hwloc_solaris_set_sth_cpubind(hwloc_topology_t topology, idtype_t idtype, id_t id, hwloc_const_bitmap_t hwloc_set, int flags)
 {
@@ -1075,6 +1111,8 @@ hwloc_set_solaris_hooks(struct hwloc_binding_hooks *hooks,
   hooks->set_thisproc_cpubind = hwloc_solaris_set_thisproc_cpubind;
   hooks->set_thisthread_cpubind = hwloc_solaris_set_thisthread_cpubind;
   hooks->get_thisthread_last_cpu_location = hwloc_solaris_get_thisthread_last_cpu_location;
+  hooks->x86_set_cpubind = hwloc_solaris_x86_set_cpubind;
+  hooks->x86_get_cpubind = hwloc_solaris_x86_get_cpubind;
 #ifdef HAVE_LIBLGRP
   hooks->get_proc_cpubind = hwloc_solaris_get_proc_cpubind;
   hooks->get_thisproc_cpubind = hwloc_solaris_get_thisproc_cpubind;

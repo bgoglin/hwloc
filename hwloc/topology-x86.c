@@ -1776,7 +1776,10 @@ int hwloc_look_x86(struct hwloc_topology *topology, struct hwloc_x86_backend_dat
      * we may still force use this backend when debugging with !thissystem.
      */
 
-    if (hooks.get_thisthread_cpubind && hooks.set_thisthread_cpubind) {
+    if (hooks.x86_get_cpubind && hooks.x86_set_cpubind) {
+      get_cpubind = hooks.x86_get_cpubind;
+      set_cpubind = hooks.x86_set_cpubind;
+    } else if (hooks.get_thisthread_cpubind && hooks.set_thisthread_cpubind) {
       get_cpubind = hooks.get_thisthread_cpubind;
       set_cpubind = hooks.set_thisthread_cpubind;
     } else if (hooks.get_thisproc_cpubind && hooks.set_thisproc_cpubind) {

@@ -56,23 +56,23 @@ int main(void)
     offset = offsetof(struct hwloc_topology, binding_hooks);
     assert(offset == 472);
     size = sizeof(struct hwloc_binding_hooks);
-    assert(size == 192);
+    assert(size == 208);
 
     offset = offsetof(struct hwloc_topology, support);
-    assert(offset == 664);
+    assert(offset == 680);
 
     offset = offsetof(struct hwloc_topology, infos);
-    assert(offset == 696);
+    assert(offset == 712);
     size = sizeof(struct hwloc_infos_s);
     assert(size == 16);
 
     offset = offsetof(struct hwloc_topology, first_dist);
-    assert(offset == 736);
+    assert(offset == 752);
     size = sizeof(struct hwloc_internal_distances_s);
     assert(size == 88);
 
     offset = offsetof(struct hwloc_topology, memattrs);
-    assert(offset == 760);
+    assert(offset == 776);
     size = sizeof(struct hwloc_internal_memattr_s);
     assert(size == 32);
     size = sizeof(struct hwloc_internal_memattr_target_s);
@@ -83,28 +83,28 @@ int main(void)
     assert(size == 32);
 
     offset = offsetof(struct hwloc_topology, memtiers);
-    assert(offset == 776);
+    assert(offset == 792);
     size = sizeof(struct hwloc_internal_memtier_s);
     assert(size == 64);
 
     offset = offsetof(struct hwloc_topology, cpukinds);
-    assert(offset == 792);
+    assert(offset == 808);
     size = sizeof(struct hwloc_internal_cpukind_s);
     assert(size == 40);
 
     offset = offsetof(struct hwloc_topology, grouping_next_subkind);
-    assert(offset == 832);
+    assert(offset == 848);
 
     offset = offsetof(struct hwloc_topology, first_pci_locality);
-    assert(offset == 840);
+    assert(offset == 856);
     size = sizeof(struct hwloc_pci_locality_s);
     assert(size == 48);
 
     offset = offsetof(struct hwloc_topology, backends);
-    assert(offset == 856);
+    assert(offset == 872);
 
     offset = offsetof(struct hwloc_topology, tma);
-    assert(offset == 880);
+    assert(offset == 896);
 
     /* fields after this one aren't needed after discovery */
 
