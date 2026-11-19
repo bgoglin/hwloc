@@ -12,11 +12,11 @@ android {
         targetSdkVersion 36
         ndkVersion "29.0.14206865"
         // Increase versionCode whenever you publish a new Android release
-        versionCode 80286
+        versionCode 80288
         // Official hwloc version - snapshot number - android apk version
         // Set snapshot number to 1 when the hwloc version is increased.
         // Increase the snapshot number when the hwloc code changed but not its version
-        versionName "2.16.0-1-1.6.2"
+        versionName "2.16.0-1-1.6.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
             cmake {
@@ -66,7 +66,7 @@ android {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation 'androidx.appcompat:appcompat:1.3.0-alpha02'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.constraintlayout:constraintlayout:2.0.1'
     implementation 'com.google.android.material:material:1.3.0-alpha02'
     implementation 'androidx.drawerlayout:drawerlayout:1.1.0'
